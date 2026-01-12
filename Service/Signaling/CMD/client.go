@@ -5,10 +5,10 @@ import (
 	"context"
 	_ "encoding/json"
 	"fmt"
+	"runtime"
 
 	"log"
 	"os"
-	"time"
 
 	"github.com/LH-10/TermBuzz/Signaling/CMD/constants"
 	"github.com/LH-10/TermBuzz/Signaling/CMD/models"
@@ -16,27 +16,50 @@ import (
 	"github.com/coder/websocket/wsjson"
 )
 
-type ClientMessageFormat struct {
-	ClientId    int    `json:"clientid"`
-	ClientName  string `json:"clientname"`
-	Message     string `json:"message"`
-	MessageType string `json:"message_type"`
-}
+// func chatWithClient(ctx context.Context, conn *websocket.Conn, messageStructure models.ClientMessageFormat) {
+// 	inps := bufio.NewScanner(os.Stdin)
+// 	inps.Scan()
+// 	fmt.Println("You are now connected with other client")
+// 	messageStructure.MessageType = constants.PeerChat
+// 	PeerMessage := new(models.ClientMessageFormat)
+
+// 	go func() {
+// 		for {
+// 			wsjson.Read(ctx, conn, PeerMessage)
+// 			if PeerMessage.Message == "exit" {
+// 				fmt.Println("exiting chat")
+// 				break
+// 			}
+// 			fmt.Println(PeerMessage.ClientName, ": ", PeerMessage.Message)
+// 		}
+// 	}()
+// 	for inps.Scan() {
+
+// 		messageStructure.Message = inps.Text()
+// 		if messageStructure.Message == "exit" {
+// 			wsjson.Write(ctx, conn, messageStructure)
+// 			fmt.Println("Ending chat")
+// 			break
+// 		}
+// 		wsjson.Write(ctx, conn, messageStructure)
+
+// 	}
+// }
 
 func main() {
 	fmt.Println("Enter your name :")
 
-	var messageFormat models.ClientMessageFormat
-	fmt.Scan(&messageFormat.ClientName)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
+	var messageToServer models.ClientMessageFormat
+	fmt.Scan(&messageToServer.ClientName)
+
+	ctx := context.Background()
 
 	c, _, err := websocket.Dial(ctx, "ws://localhost:8081", nil)
 	if err != nil {
 		log.Println(err)
 	}
 	defer c.CloseNow()
-	var v models.ServerMessage = models.ServerMessage{}
+	var v models.ServerMessage
 
 	fmt.Println("Enter 1 to request cleint ID any other key to skip")
 	var choice int
@@ -44,49 +67,91 @@ func main() {
 
 	if choice == 1 {
 		fmt.Println("requesting Client id.....")
-		messageFormat.MessageType = constants.RequestID
-		messageFormat.Message = "Requesting ID"
-		fmt.Println(messageFormat)
-		wsjson.Write(ctx, c, messageFormat)
+		messageToServer.MessageType = constants.RequestID
+		fmt.Println(messageToServer)
+		err = wsjson.Write(ctx, c, messageToServer)
 		fmt.Println("Waiting for id......")
 		for {
-			wsjson.Read(ctx, c, &v)
+			err = wsjson.Read(ctx, c, &v)
+			if err != nil {
+				fmt.Println("85 ", err)
+			}
 			fmt.Println(v)
 			if v.MessageType == constants.ClientIDResponse {
-				messageFormat.ClientId = v.ClientId
+				messageToServer.ClientId = v.ClientId
 				fmt.Println("Id recieved.")
 				break
 			}
 
 		}
-		fmt.Println(messageFormat)
+		fmt.Println(messageToServer.ClientName, " ", messageToServer.ClientId)
 	}
-	messageFormat.MessageType = constants.RequestPeerConnection
-	inps := bufio.NewScanner(os.Stdin)
-	for inps.Scan() {
 
-		messageFormat.Message = inps.Text()
-		if messageFormat.Message == "exit" {
+	messageToServer.MessageType = constants.Blank
+	inps := bufio.NewScanner(os.Stdin)
+	err = wsjson.Read(ctx, c, &v)
+	menu := v.Message
+	var newReciever models.ServerMessage
+
+	go func() {
+		for {
+			err = wsjson.Read(ctx, c, &newReciever)
+			if err != nil {
+				fmt.Println(err.Error(), "111")
+				if c.Ping(ctx) != nil {
+					fmt.Println("Cannot connect")
+					runtime.Goexit()
+				}
+			}
+			fmt.Println("Message of type", newReciever.MessageType)
+			fmt.Println(newReciever.Message, "\n\n\t", newReciever)
+		}
+	}()
+
+	for inps.Scan() {
+		messageToServer.Message = inps.Text()
+
+		if messageToServer.Message == "exit" {
+			fmt.Println("Exiting")
 			break
 		}
-		if messageFormat.Message != "" {
-			err = wsjson.Write(ctx, c, messageFormat)
 
-			err = wsjson.Read(ctx, c, &v)
+		switch messageToServer.Message {
+		case "1":
+			messageToServer.MessageType = constants.RequestPeerList
+		case "2":
+			messageToServer.MessageType = constants.RequestPeerConnection
+			clientName := ""
+			fmt.Println("Enter Client name to connect with")
+			inps.Scan()
+			clientName = inps.Text()
+			messageToServer.RecieverName = clientName
+			fmt.Print("Enter Message:")
+			inps.Scan()
+			messageToServer.Message = inps.Text()
+
+		default:
+			fmt.Println("Invlaid choice")
+
 		}
-		log.Println(v)
+
+		if messageToServer.Message != "" {
+			err = wsjson.Write(ctx, c, messageToServer)
+			messageToServer.Message = ""
+
+		}
+
+		// log.Println(v)
 		if err != nil {
 			log.Println(err)
+			if c.Ping(ctx) != nil {
+				log.Println("Cannot connect")
+				c.CloseNow()
+				runtime.Goexit()
+			}
 		}
-		fmt.Println("Enter your message")
-	}
-	// jsonWithName,err:=json.Marshal(map[string]interface{}{
-	// 	"name":
-	// })
 
-	for inps.Scan() {
-
-		time.Sleep(time.Second * 1)
+		fmt.Println(menu)
 	}
 
 	c.Close(websocket.StatusNormalClosure, "closed")
