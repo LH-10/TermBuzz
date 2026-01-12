@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/LH-10/TermBuzz/Signaling/CMD/constants"
@@ -23,36 +24,47 @@ type Client struct {
 	name string
 }
 
-var clients []*Client
+type clientName = string
 
-func ClientToClient(sender *websocket.Conn, recievername string, ctx context.Context, message string) {
-	var sendername string
-	var clietnMessageFormatHolder models.ClientMessageFormat
-	fmt.Println(clietnMessageFormatHolder)
-	var reciever *websocket.Conn
-	for i := range clients {
-		if sender == clients[i].conn {
-			sendername = clients[i].name
-			continue
-		}
-		if recievername == clients[i].name {
-			reciever = clients[i].conn
-		}
+var clients map[clientName]*Client = make(map[string]*Client)
+
+func ClientToClient(sender *websocket.Conn, recievername string, ctx context.Context, sendername string, message string) {
+	senderClient, ok := clients[sendername]
+	if !ok {
+		fmt.Println("Sender does not exists")
+		return
 	}
-	fmt.Println("Sender", sendername, "\n reciever conn", reciever)
-	message += sendername
-	wsjson.Write(ctx, reciever, message)
+	if senderClient.conn != sender {
+		fmt.Println(sendername, " has wrong connection id ")
+		return
+	}
+	var clietnMessageFormatHolder models.ClientMessageFormat
+	var serverMsg models.ServerMessage
+	fmt.Println(clietnMessageFormatHolder)
+	var recieverConnection *websocket.Conn
+	recieverConnection = clients[recievername].conn
+	fmt.Println("Sender", sendername, "\n reciever conn", recieverConnection)
+	message = sendername + ":" + message
+	serverMsg.Message = message
+	serverMsg.MessageType = constants.PeerChat
+
+	wsjson.Write(ctx, recieverConnection, serverMsg)
 }
 
 var numclient int
 
 func main() {
-	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var MenuForClient [4]string = [4]string{"1.Get Client List\n", "2.Connect to client"}
+	// fmt.Print(MenuForClient)
+	wsMux := http.NewServeMux()
+
+	wsMux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			OriginPatterns: []string{"*"},
 		})
 		currentClient := &Client{conn: c, id: int(time.Now().Unix())}
-		clients = append(clients, currentClient)
+
+		// clients = append(clients, currentClient)
 		fmt.Println("New connection", clients)
 		if err != nil {
 			log.Println(err)
@@ -60,17 +72,16 @@ func main() {
 		defer c.CloseNow()
 		numclient++
 		ctx := context.Background()
-		var v any
+		// var v any
 		var clientMessage models.ClientMessageFormat
-		fmt.Println("Woke up")
-		err = wsjson.Read(ctx, c, &clientMessage)
+		err = wsjson.Read(ctx, c, &clientMessage) //Read is a blocking operation
 
 		if err != nil {
 			log.Println(err)
 			return
 		}
 		(currentClient).name = clientMessage.ClientName
-		fmt.Println(currentClient.name)
+		clients[currentClient.name] = currentClient
 		if clientMessage.MessageType == constants.RequestID {
 			err = wsjson.Write(ctx, c, models.ServerMessage{MessageType: constants.ClientIDResponse, ClientId: currentClient.id, Message: "Your Id"})
 			if err != nil {
@@ -80,42 +91,54 @@ func main() {
 			fmt.Println("ID Sent")
 		}
 		fmt.Printf("connections ")
-		for _, values := range clients {
-			fmt.Println(*values)
+		for i := range clients {
+			fmt.Println(clients[i])
 		}
-		fmt.Println(v, "\b\b\b")
+
+		err = wsjson.Write(ctx, c, models.ServerMessage{Message: fmt.Sprintf("%v", MenuForClient)})
+		if err != nil {
+			log.Println(err)
+		}
 
 		for {
 
-			// go func() {
-			// 	if numclient != len(clients) {
-			// 		fmt.Println("here", numclient, len(clients))
-			// 		wsjson.Write(ctx, c, fmt.Sprintf("others joined%v", clients))
-			// 		numclient = len(clients)
-			// 	}
-			// }()
 			err = wsjson.Read(ctx, c, &clientMessage)
 
 			if err != nil {
 				log.Println(err)
-				log.Println("here")
 				break
 			}
 			log.Printf("recieved: %v", clientMessage)
 
-			if clientMessage.MessageType != constants.RequestID {
-				wsjson.Write(ctx, c, models.ServerMessage{Message: "Hi i recieved your message"})
+			switch clientMessage.MessageType {
+
+			case constants.RequestPeerList:
+				var clientInfoString strings.Builder
+				for i := range clients {
+					clientInfoString.WriteString(fmt.Sprintf("%v", *clients[i]))
+				}
+				err = wsjson.Write(ctx, c, models.ServerMessage{Message: clientInfoString.String()})
+			case constants.RequestPeerConnection:
+				recieverName := clientMessage.RecieverName
+				ClientToClient(c, recieverName, ctx, clientMessage.ClientName, clientMessage.Message)
+			default:
+				fmt.Printf("Invalid choicde \n")
+
 			}
+
+			if err != nil {
+				fmt.Println(err)
+			}
+
 		}
 
 		c.Close(websocket.StatusNormalClosure, "cross origin WebSocket accepted")
 	}))
 
-	err := http.ListenAndServe("localhost:8081", nil)
+	log.Println("Server Starting on port 8081 ")
+	err := http.ListenAndServe("localhost:8081", wsMux)
 	if err != nil {
 		fmt.Println(err)
 	}
-	log.Println("Server Started ")
-	// fmt.Println("Hello",wsfn)
 
 }
