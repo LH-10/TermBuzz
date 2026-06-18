@@ -1,0 +1,1 @@
+https://medium.com/@maximgradan/serialize-a-struct-to-bytes-to-send-it-through-the-network-in-go-part-i-b861c15d2f06
