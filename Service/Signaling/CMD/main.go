@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/LH-10/TermBuzz/Signaling/CMD/constants"
-	"github.com/LH-10/TermBuzz/Signaling/CMD/models"
+	"github.com/LH-10/TermBuzz/shared/constants"
+	"github.com/LH-10/TermBuzz/shared/models"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -73,14 +74,14 @@ func main() {
 		numclient++
 		ctx := context.Background()
 		// var v any
-		var clientMessage models.ClientMessageFormat
+		var clientMessage models.ClientMessageFormatFut
 		err = wsjson.Read(ctx, c, &clientMessage) //Read is a blocking operation
 
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		(currentClient).name = clientMessage.ClientName
+		(currentClient).name = clientMessage.SenderName
 		clients[currentClient.name] = currentClient
 		if clientMessage.MessageType == constants.RequestID {
 			err = wsjson.Write(ctx, c, models.ServerMessage{MessageType: constants.ClientIDResponse, ClientId: currentClient.id, Message: "Your Id"})
@@ -120,7 +121,24 @@ func main() {
 				err = wsjson.Write(ctx, c, models.ServerMessage{Message: clientInfoString.String()})
 			case constants.RequestPeerConnection:
 				recieverName := clientMessage.RecieverName
-				ClientToClient(c, recieverName, ctx, clientMessage.ClientName, clientMessage.Message)
+				ClientToClient(c, recieverName, ctx, clientMessage.SenderName, clientMessage.Payload.Message)
+			case constants.SDPExchange, constants.SDPAnswer:
+				recipentData := clients[clientMessage.RecieverName]
+				binaryMessage, err := json.Marshal(clientMessage)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Println("clientmessage", clientMessage)
+				recipentData.conn.Write(ctx, websocket.MessageBinary, binaryMessage)
+			// case constants.SDPAnswer:
+			// 	recipentData := clients[clientMessage.RecieverName]
+			// 	binaryMessage, err := json.Marshal(clientMessage)
+			// 	if err != nil {
+			// 		fmt.Println("err:", err)
+			// 	}
+			// 	fmt.Println(clientMessage)
+			// 	recipentData.conn.Write(ctx, websocket.MessageBinary, binaryMessage)
 			default:
 				fmt.Printf("Invalid choicde \n")
 

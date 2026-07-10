@@ -7,6 +7,7 @@ const (
 	PeerChat
 	Blank
 	SDPExchange
+	SDPAnswer
 )
 
 const (
