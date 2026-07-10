@@ -14,12 +14,12 @@ type ClientMessageFormat struct {
 type ClientMessageFormatFut struct {
 	ClientId     int    `json:"clientid"`
 	RecieverName string `json:"reciever_name"`
-	ClientName   string `json:"clientname"`
+	SenderName   string `json:"sendername"`
 	MessageType  int    `json:"message_type"`
 	Payload      struct {
 		Message string `json:"message"`
 		webrtc.SessionDescription
-	}
+	} `json:"payload"`
 }
 
 type ServerMessage struct {
@@ -29,7 +29,6 @@ type ServerMessage struct {
 }
 
 type Message interface {
-	getMessage() string
-	getMessageType() int
+	GetMessage() string
+	GetMessageType() int
 }
-

@@ -6,4 +6,5 @@ const (
 	RequestPeerList
 	PeerChat
 	Blank
+	SDPExchange
 )
