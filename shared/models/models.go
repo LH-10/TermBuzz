@@ -1,6 +1,8 @@
 package models
 
-import "github.com/pion/webrtc/v4"
+import (
+	"github.com/pion/webrtc/v4"
+)
 
 type ClientMessageFormat struct {
 	ClientId     int    `json:"clientid"`
@@ -18,7 +20,7 @@ type ClientMessageFormatFut struct {
 	MessageType  int    `json:"message_type"`
 	Payload      struct {
 		Message string `json:"message"`
-		webrtc.SessionDescription
+		*webrtc.SessionDescription
 	} `json:"payload"`
 }
 

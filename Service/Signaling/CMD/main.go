@@ -13,6 +13,7 @@ import (
 	"github.com/LH-10/TermBuzz/shared/models"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/pion/webrtc/v4"
 )
 
 func processClientRequest(clientRequest any) {
@@ -55,7 +56,7 @@ func ClientToClient(sender *websocket.Conn, recievername string, ctx context.Con
 var numclient int
 
 func main() {
-	var MenuForClient [4]string = [4]string{"1.Get Client List\n", "2.Connect to client"}
+	var MenuForClient [4]string = [4]string{"1.Get Client List\n", "2.Connect to client , 3.SDP exchange"}
 	// fmt.Print(MenuForClient)
 	wsMux := http.NewServeMux()
 
@@ -118,19 +119,30 @@ func main() {
 				for i := range clients {
 					clientInfoString.WriteString(fmt.Sprintf("%v", *clients[i]))
 				}
-				err = wsjson.Write(ctx, c, models.ServerMessage{Message: clientInfoString.String()})
+				err = wsjson.Write(ctx, c, models.ClientMessageFormatFut{Payload: struct {
+					Message string `json:"message"`
+					*webrtc.SessionDescription
+				}{Message: clientInfoString.String()}})
 			case constants.RequestPeerConnection:
 				recieverName := clientMessage.RecieverName
 				ClientToClient(c, recieverName, ctx, clientMessage.SenderName, clientMessage.Payload.Message)
 			case constants.SDPExchange, constants.SDPAnswer:
+				if clientMessage.RecieverName == "" {
+					fmt.Println("empty Reciver field")
+				}
+				clientMessage.SenderName = currentClient.name
 				recipentData := clients[clientMessage.RecieverName]
-				binaryMessage, err := json.Marshal(clientMessage)
+				var binaryMessage []byte
+				binaryMessage, err = json.Marshal(clientMessage)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
+				fmt.Println(clientMessage.SenderName, "->", clientMessage.RecieverName)
 				fmt.Println("clientmessage", clientMessage)
-				recipentData.conn.Write(ctx, websocket.MessageBinary, binaryMessage)
+				fmt.Println("Before wirte called")
+				err = recipentData.conn.Write(ctx, websocket.MessageBinary, binaryMessage)
+
 			// case constants.SDPAnswer:
 			// 	recipentData := clients[clientMessage.RecieverName]
 			// 	binaryMessage, err := json.Marshal(clientMessage)
@@ -140,6 +152,7 @@ func main() {
 			// 	fmt.Println(clientMessage)
 			// 	recipentData.conn.Write(ctx, websocket.MessageBinary, binaryMessage)
 			default:
+				fmt.Println("Message of type:", clientMessage.MessageType, "is:")
 				fmt.Printf("Invalid choicde \n")
 
 			}
@@ -147,6 +160,7 @@ func main() {
 			if err != nil {
 				fmt.Println(err)
 			}
+			fmt.Println("After write ")
 
 		}
 
@@ -154,7 +168,7 @@ func main() {
 	}))
 
 	log.Println("Server Starting on port 8081 ")
-	err := http.ListenAndServe("localhost:8081", wsMux)
+	err := http.ListenAndServe(":8081", wsMux)
 	if err != nil {
 		fmt.Println(err)
 	}

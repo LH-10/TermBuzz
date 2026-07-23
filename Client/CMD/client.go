@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	_ "encoding/json"
 	"fmt"
 	"runtime"
@@ -14,7 +15,9 @@ import (
 	"github.com/LH-10/TermBuzz/shared/models"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/pion/interceptor"
 	"github.com/pion/mediadevices"
+	"github.com/pion/mediadevices/pkg/codec/opus"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	"github.com/pion/webrtc/v4"
 )
@@ -55,11 +58,12 @@ import (
 // 	peerConn *webrtc.PeerConnection
 // }{}
 
-func getAudio() ([]mediadevices.Track, error) {
+func getAudio(codecSelector *mediadevices.CodecSelector) ([]mediadevices.Track, error) {
 	stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
 		Audio: func(mtc *mediadevices.MediaTrackConstraints) {
 			// mtc.AudioConstraints=prop.AudioConstraints{}
 		},
+		Codec: codecSelector,
 	})
 
 	if err != nil {
@@ -71,15 +75,30 @@ func getAudio() ([]mediadevices.Track, error) {
 }
 
 func createPeerConn() (*webrtc.PeerConnection, error) {
+	m := &webrtc.MediaEngine{}
+	if err := m.RegisterDefaultCodecs(); err != nil {
+		panic(err)
+	}
+	opusParams, err := opus.NewParams()
+	if err != nil {
+		fmt.Println("opus err")
+		panic(err)
+	}
+	codecSelector := mediadevices.NewCodecSelector(mediadevices.WithAudioEncoders(&opusParams))
+	codecSelector.Populate(m)
+	i := &interceptor.Registry{}
+	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
+		panic(err)
+	}
 	var config webrtc.Configuration
-	config.ICECandidatePoolSize = 10
+	config.ICECandidatePoolSize = 1
 	config.ICEServers = []webrtc.ICEServer{{URLs: []string{"stun:stun1.l.google.com:19302"}}}
-	peerConn, err := webrtc.NewPeerConnection(config)
+	peerConn, err := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i)).NewPeerConnection(config)
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
-	audioTrack, err := getAudio()
+	audioTrack, err := getAudio(codecSelector)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +128,9 @@ func handleMessage(peerConn *webrtc.PeerConnection, messenger *messaging, messag
 		fmt.Println("Enter reciver name:")
 		inps.Scan()
 		recvr := inps.Text()
+		fmt.Println("making call")
 		makeCall(peerConn, messenger, recvr)
+		fmt.Println("made call")
 	default:
 		fmt.Println("Invlaid choice")
 
@@ -120,6 +141,13 @@ func handleMessage(peerConn *webrtc.PeerConnection, messenger *messaging, messag
 var localaudio mediadevices.AudioTrack
 
 func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever string) error {
+	if peerConn == nil {
+		var err error
+		peerConn, err = createPeerConn()
+		if err != nil {
+			return err
+		}
+	}
 	// peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
 	// 	messenger.send(models.ClientMessageFormat{
 	// 		RecieverName: reciever,
@@ -138,20 +166,21 @@ func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever st
 		return err
 	}
 	messenger.send(models.ClientMessageFormatFut{
+
 		RecieverName: reciever,
 		MessageType:  constants.SDPExchange,
 		Payload: struct {
 			Message string `json:"message"`
-			webrtc.SessionDescription
+			*webrtc.SessionDescription
 		}{
 			Message:            "SDP",
-			SessionDescription: sdp,
+			SessionDescription: &sdp,
 		},
 	})
 	return nil
 }
 
-func incomingCall(peerConn *webrtc.PeerConnection, remoteSDP webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+func incomingCall(peerConn *webrtc.PeerConnection, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
 	var err error
 	if peerConn == nil {
 
@@ -161,16 +190,19 @@ func incomingCall(peerConn *webrtc.PeerConnection, remoteSDP webrtc.SessionDescr
 			return webrtc.SessionDescription{}, err
 		}
 	}
-	peerConn.SetRemoteDescription(remoteSDP)
+	fmt.Println("sdp from remote peer :", *remoteSDP, "\n\n ")
+	peerConn.SetRemoteDescription(*remoteSDP)
 	ansSDP, err := peerConn.CreateAnswer(nil)
 	if err != nil {
 		fmt.Println(err)
 		return webrtc.SessionDescription{}, err
 	}
+	fmt.Println("created ansSPD:", ansSDP)
 	err = peerConn.SetLocalDescription(ansSDP)
 	if err != nil {
 		return webrtc.SessionDescription{}, err
 	}
+	fmt.Println("here")
 	return ansSDP, nil
 }
 
@@ -202,53 +234,21 @@ func (msg *messaging) read() {
 func main() {
 	fmt.Println("Enter your name :")
 
-	// stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
-	// 	Audio: func(mtc *mediadevices.MediaTrackConstraints) {
-	// 		// mtc.AudioConstraints=prop.AudioConstraints{}
-	// 	},
-	// })
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
+	var err error
 	var peerConn *webrtc.PeerConnection
-	// fmt.Println(localaudio)
-	// peerConn, err := createPeerConn()
-	// if err != nil {
-	// 	log.Println(err)
-	// }
+	peerConn, err = createPeerConn()
+	if err != nil {
+		log.Println(err)
+	}
 
-	// // go func() {
-
-	// // 	for _, track := range stream.GetAudioTracks() {
-	// // // track.OnEnded(func(err error) {
-	// // // fmt.Printf("Track (ID: %s) ended with error: %v\n",
-	// // //		track.ID(), err)
-	// // // })
-	// // 		audio_t, ok := track.(*mediadevices.AudioTrack)
-	// // 		if !ok {
-	// // 			log.Fatal("track is not audio")
-	// // 		}
-	// // 		peerConn.AddTrack(audio_t)
-	// // 	}
-	// //
-	// // }()
-
-	// peerConn.AddTrack(stream.GetAudioTracks()[0])
-	// var msc mediadevices.MediaStreamConstraints
-	// sdpMessage, err := peerConn.CreateOffer(&webrtc.OfferOptions{})
-	// if err != nil {
-	// 	fmt.Print("err:", err, "\n")
-	// 	return
-	// }
-	// peerConn.SetLocalDescription(sdpMessage)
-	// fmt.Println("SDP:", sdpMessage, "MSC", msc)
 	var messageToServer models.ClientMessageFormatFut
 	fmt.Scan(&messageToServer.SenderName)
 	msgr := &messaging{}
 	msgr.ctx = context.Background()
-	var err error
-	msgr.conn, _, err = websocket.Dial(msgr.ctx, "ws://localhost:8081", nil)
+	ipadd := "127.0.0.1"
+	port := "8081"
+	address := fmt.Sprintf("ws://%s:%s", ipadd, port)
+	msgr.conn, _, err = websocket.Dial(msgr.ctx, address, nil)
 	if err != nil {
 		log.Println(err)
 	}
@@ -262,13 +262,29 @@ func main() {
 	if choice == 1 {
 		fmt.Println("requesting Client id.....")
 		messageToServer.MessageType = constants.RequestID
+		messageToServer.Payload.Message = "REq"
 		fmt.Println(messageToServer)
+		tempbt, err := json.Marshal(messageToServer)
+		if err != nil {
+			fmt.Println(err)
+		}
+		err = json.Unmarshal(tempbt, &messageToServer)
+		if err != nil {
+			fmt.Println("err:", err, err.Error())
+			fmt.Println("here")
+		}
+
 		err = wsjson.Write(msgr.ctx, msgr.conn, messageToServer)
+		if err != nil {
+			fmt.Println("err:", err)
+			return
+		}
 		fmt.Println("Waiting for id......")
 		for {
 			err = wsjson.Read(msgr.ctx, msgr.conn, &v)
 			if err != nil {
 				fmt.Println("Error:", err)
+				runtime.Goexit()
 			}
 			fmt.Println(v)
 			if v.MessageType == constants.ClientIDResponse {
@@ -307,18 +323,21 @@ func main() {
 					fmt.Println(err)
 					continue
 				}
+				messageToServer.RecieverName = newReciever.SenderName
+				messageToServer.SenderName = newReciever.RecieverName
 				messageToServer.MessageType = constants.SDPAnswer
 				messageToServer.Payload.Message = "SDPAnswer"
-				messageToServer.Payload.SessionDescription = ans
+				messageToServer.Payload.SessionDescription = &ans
 				msgr.send(messageToServer)
 				fmt.Println("SDP answer sent")
 			case constants.SDPAnswer:
-				err := readAnswer(peerConn, newReciever.Payload.SessionDescription)
+				fmt.Println("Got an answer")
+				err := readAnswer(peerConn, *newReciever.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Println("Got an answer", *peerConn.CurrentRemoteDescription() == newReciever.Payload.SessionDescription)
+				fmt.Println("Got an answer", *peerConn.CurrentRemoteDescription() == *newReciever.Payload.SessionDescription)
 			}
 		}
 	}()
