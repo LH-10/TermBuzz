@@ -8,6 +8,7 @@ const (
 	Blank
 	SDPExchange
 	SDPAnswer
+	Candidate
 )
 
 const (

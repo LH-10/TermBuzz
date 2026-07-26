@@ -122,6 +122,7 @@ func main() {
 				err = wsjson.Write(ctx, c, models.ClientMessageFormatFut{Payload: struct {
 					Message string `json:"message"`
 					*webrtc.SessionDescription
+					*webrtc.ICECandidateInit
 				}{Message: clientInfoString.String()}})
 			case constants.RequestPeerConnection:
 				recieverName := clientMessage.RecieverName

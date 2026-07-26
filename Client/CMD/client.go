@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	_ "encoding/json"
+	"errors"
 	"fmt"
 	"runtime"
 
@@ -106,7 +107,9 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 
 		peerConn.AddTrack((track))
 	}
-
+	peerConn.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) { fmt.Print("webrtc Connection", pcs, "\n") })
+	peerConn.OnICEConnectionStateChange(func(is webrtc.ICEConnectionState) { fmt.Print("IceConnection State:", is.String()) })
+	peerConn.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) { fmt.Print("recieving tracks") })
 	return peerConn, nil
 }
 
@@ -148,13 +151,24 @@ func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever st
 			return err
 		}
 	}
-	// peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
-	// 	messenger.send(models.ClientMessageFormat{
-	// 		RecieverName: reciever,
-	// 		MessageType:  2300, //candidtae type new
-	// 		Message:      i.String(),
-	// 	})
-	// })
+	peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
+		if i == nil {
+			return
+		}
+		candidate := i.ToJSON()
+		messenger.send(models.ClientMessageFormatFut{
+			RecieverName: reciever,
+			MessageType:  constants.Candidate, //candidtae type new
+			Payload: struct {
+				Message string "json:\"message\""
+				*webrtc.SessionDescription
+				*webrtc.ICECandidateInit
+			}{
+				Message:          i.String(),
+				ICECandidateInit: &candidate,
+			},
+		})
+	})
 	sdp, err := peerConn.CreateOffer(&webrtc.OfferOptions{})
 	if err != nil {
 		fmt.Println(err)
@@ -172,15 +186,17 @@ func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever st
 		Payload: struct {
 			Message string `json:"message"`
 			*webrtc.SessionDescription
+			*webrtc.ICECandidateInit
 		}{
 			Message:            "SDP",
 			SessionDescription: &sdp,
+			ICECandidateInit:   nil,
 		},
 	})
 	return nil
 }
 
-func incomingCall(peerConn *webrtc.PeerConnection, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+func incomingCall(reciever string, messenger messaging, peerConn *webrtc.PeerConnection, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
 	var err error
 	if peerConn == nil {
 
@@ -190,6 +206,24 @@ func incomingCall(peerConn *webrtc.PeerConnection, remoteSDP *webrtc.SessionDesc
 			return webrtc.SessionDescription{}, err
 		}
 	}
+	peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
+		if i == nil {
+			return
+		}
+		candidate := i.ToJSON()
+		messenger.send(models.ClientMessageFormatFut{
+			RecieverName: reciever,
+			MessageType:  constants.Candidate, //candidtae type new
+			Payload: struct {
+				Message string "json:\"message\""
+				*webrtc.SessionDescription
+				*webrtc.ICECandidateInit
+			}{
+				Message:          i.String(),
+				ICECandidateInit: &candidate,
+			},
+		})
+	})
 	fmt.Println("sdp from remote peer :", *remoteSDP, "\n\n ")
 	peerConn.SetRemoteDescription(*remoteSDP)
 	ansSDP, err := peerConn.CreateAnswer(nil)
@@ -245,7 +279,7 @@ func main() {
 	fmt.Scan(&messageToServer.SenderName)
 	msgr := &messaging{}
 	msgr.ctx = context.Background()
-	ipadd := "127.0.0.1"
+	ipadd := "192.168.1.4"
 	port := "8081"
 	address := fmt.Sprintf("ws://%s:%s", ipadd, port)
 	msgr.conn, _, err = websocket.Dial(msgr.ctx, address, nil)
@@ -318,7 +352,7 @@ func main() {
 			switch newReciever.MessageType {
 			case constants.SDPExchange:
 				fmt.Println("SDP Exchange initiated")
-				ans, err := incomingCall(peerConn, newReciever.Payload.SessionDescription)
+				ans, err := incomingCall(newReciever.RecieverName, *msgr, peerConn, newReciever.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
@@ -338,6 +372,14 @@ func main() {
 					continue
 				}
 				fmt.Println("Got an answer", *peerConn.CurrentRemoteDescription() == *newReciever.Payload.SessionDescription)
+			case constants.Candidate:
+				if newReciever.Payload.ICECandidateInit == nil {
+					fmt.Println(errors.New("Empty candidate in Paylod"))
+				}
+				err := peerConn.AddICECandidate(*newReciever.Payload.ICECandidateInit)
+				if err != nil {
+					log.Println(err)
+				}
 			}
 		}
 	}()

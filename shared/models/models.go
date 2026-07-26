@@ -21,6 +21,7 @@ type ClientMessageFormatFut struct {
 	Payload      struct {
 		Message string `json:"message"`
 		*webrtc.SessionDescription
+		*webrtc.ICECandidateInit
 	} `json:"payload"`
 }
 
