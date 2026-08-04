@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	_ "encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"runtime"
 
@@ -21,6 +22,8 @@ import (
 	"github.com/pion/mediadevices/pkg/codec/opus"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	"github.com/pion/webrtc/v4"
+	"github.com/pion/webrtc/v4/pkg/media"
+	"github.com/pion/webrtc/v4/pkg/media/oggwriter"
 )
 
 // func chatWithClient(ctx context.Context, conn *websocket.Conn, messageStructure models.ClientMessageFormat) {
@@ -109,7 +112,48 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 	}
 	peerConn.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) { fmt.Print("webrtc Connection", pcs, "\n") })
 	peerConn.OnICEConnectionStateChange(func(is webrtc.ICEConnectionState) { fmt.Print("IceConnection State:", is.String()) })
-	peerConn.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) { fmt.Print("recieving tracks") })
+
+	peerConn.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+		fmt.Println("codec:", t.Codec())
+		fmt.Print("recieving tracks")
+		fmt.Print("Paylaod tpe", t.PayloadType())
+
+		readStream := func(t *webrtc.TrackRemote, oggwrt media.Writer) {
+			for {
+				fmt.Println("reading.....")
+				packet, _, err := t.ReadRTP()
+
+				if err != nil {
+					log.Println(err)
+					return
+				}
+
+				// for _, payload := range data {
+				// 	fmt.Printf("%x", payload)
+				// }
+				err = oggwrt.WriteRTP(packet)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+			}
+			// time.Sleep(time.Millisecond * 10)
+		}
+		go func() {
+			file, err := os.OpenFile("./payload.ogg", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 644)
+			if err != nil {
+				fmt.Println("file error", err)
+				return
+			}
+			oggwrt, err := oggwriter.NewWith(file, 48000, 2)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			readStream(t, oggwrt)
+		}()
+	})
 	return peerConn, nil
 }
 
@@ -279,9 +323,10 @@ func main() {
 	fmt.Scan(&messageToServer.SenderName)
 	msgr := &messaging{}
 	msgr.ctx = context.Background()
-	ipadd := "192.168.1.4"
+	ipadd := flag.String("ip", "192.168.1.5", "ipaddress of server")
 	port := "8081"
-	address := fmt.Sprintf("ws://%s:%s", ipadd, port)
+	flag.Parse()
+	address := fmt.Sprintf("ws://%s:%s", *ipadd, port)
 	msgr.conn, _, err = websocket.Dial(msgr.ctx, address, nil)
 	if err != nil {
 		log.Println(err)
