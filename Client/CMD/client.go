@@ -84,11 +84,14 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		panic(err)
 	}
 	opusParams, err := opus.NewParams()
+	opusParams.RTPCodec().ClockRate = 48000
+	opusParams.RTPCodec().Channels = 0
 	if err != nil {
 		fmt.Println("opus err")
 		panic(err)
 	}
 	codecSelector := mediadevices.NewCodecSelector(mediadevices.WithAudioEncoders(&opusParams))
+	// m.RegisterCodec()
 	codecSelector.Populate(m)
 	i := &interceptor.Registry{}
 	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
@@ -117,12 +120,10 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		fmt.Println("codec:", t.Codec())
 		fmt.Print("recieving tracks")
 		fmt.Print("Paylaod tpe", t.PayloadType())
-
 		readStream := func(t *webrtc.TrackRemote, oggwrt media.Writer) {
 			for {
 				fmt.Println("reading.....")
 				packet, _, err := t.ReadRTP()
-
 				if err != nil {
 					log.Println(err)
 					return
@@ -184,8 +185,6 @@ func handleMessage(peerConn *webrtc.PeerConnection, messenger *messaging, messag
 	}
 
 }
-
-var localaudio mediadevices.AudioTrack
 
 func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever string) error {
 	if peerConn == nil {
