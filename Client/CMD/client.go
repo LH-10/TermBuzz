@@ -30,13 +30,18 @@ import (
 	"github.com/LH-10/TermBuzz/shared/models"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/ebitengine/oto/v3"
 	"github.com/pion/interceptor"
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/opus"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
+	piopus "github.com/pion/opus"
+	"github.com/pion/rtp"
+	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 	"github.com/pion/webrtc/v4/pkg/media/oggwriter"
+	"github.com/pion/webrtc/v4/pkg/media/samplebuilder"
 )
 
 // func chatWithClient(ctx context.Context, conn *websocket.Conn, messageStructure models.ClientMessageFormat) {
@@ -71,9 +76,40 @@ import (
 
 // var peerConn *webrtc.PeerConnection
 
-// var clientGlob = struct {
-// 	peerConn *webrtc.PeerConnection
-// }{}
+//	var clientGlob = struct {
+//		peerConn *webrtc.PeerConnection
+//	}{}
+type opusCodecReader struct {
+	buf           []byte
+	opusDecoder   piopus.Decoder
+	bufOffset     int
+	segmentBuffer [][]byte
+}
+
+func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	var out []byte = make([]byte, 3890) //2*1920+50
+	band, isStr, err := ocr.opusDecoder.Decode(p, out)
+	fmt.Println("band:", band, "\nstero?", isStr)
+	if err != nil {
+		fmt.Println("here")
+		fmt.Println("err:", err)
+		return 0, err
+	}
+	ocr.buf = append(ocr.buf, out...)
+	return len(out), nil
+
+}
+func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
+	n = copy(p, ocr.buf)
+
+	ocr.buf = ocr.buf[n:]
+	// go ocr.buf.Truncate(0)
+	return n, err
+
+}
 
 func getAudio(codecSelector *mediadevices.CodecSelector) ([]mediadevices.Track, error) {
 	stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
@@ -131,25 +167,79 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 
 	peerConn.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
 		fmt.Println("codec:", t.Codec())
+
 		fmt.Print("recieving tracks")
 		fmt.Print("Paylaod tpe", t.PayloadType())
-		readStream := func(t *webrtc.TrackRemote, oggwrt media.Writer) {
+		readStream := func(t *webrtc.TrackRemote, _ media.Writer) {
+			var depacktizer rtp.Depacketizer
+			switch t.Codec().MimeType {
+			case webrtc.MimeTypeOpus:
+				depacktizer = &codecs.OpusPacket{}
+			default:
+				fmt.Print("invalid codec")
+			}
+			// newTrack, err := webrtc.NewTrackLocalStaticSample(t.Codec().RTPCodecCapability, "decodestream", "pion")
+			// if err != nil {
+			// 	fmt.Println(err)
+			// 	return
+			// }
+			sb := samplebuilder.New(90, depacktizer, t.Codec().ClockRate)
+			opusdecoder, err := piopus.NewDecoderWithOutput(48000, 2)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			var dt []byte = make([]byte, 0)
+			rdr := &opusCodecReader{opusDecoder: opusdecoder, buf: dt}
+			otoCtxOpts := &oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2}
+			otoCtx, ready, err := oto.NewContext(otoCtxOpts)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			<-ready
+			otoply := otoCtx.NewPlayer(rdr)
+			thirdRead := 0
 			for {
-				fmt.Println("reading.....")
+				if thirdRead%3 == 0 {
+					fmt.Println("reading.....")
+				}
+
 				packet, _, err := t.ReadRTP()
 				if err != nil {
 					log.Println(err)
 					return
 				}
+				sb.Push(packet)
+				for sample := sb.Pop(); sample != nil; sample = sb.Pop() {
+					if thirdRead%3 == 0 {
+						fmt.Println("extract sample on 3rd")
+					}
+					rdr.Write(sample.Data)
+				}
+				thirdRead++
+				// n, err := rdr.Write(packet.Payload)
+				// fmt.Println("wrote", n, "\n", "here")
+				// if err != nil {
+				// 	fmt.Println(err)
+				// 	return
+				// }
+
+				// go func() {
+				if !otoply.IsPlaying() {
+					fmt.Println("playing now")
+					otoply.Play()
+				}
+				// }()
 
 				// for _, payload := range data {
 				// 	fmt.Printf("%x", payload)
 				// }
-				err = oggwrt.WriteRTP(packet)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
+				// err = oggwrt.WriteRTP(packet)
+				// if err != nil {
+				// 	fmt.Println(err)
+				// 	return
+				// }
 
 			}
 			// time.Sleep(time.Millisecond * 10)
@@ -160,12 +250,12 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 				fmt.Println("file error", err)
 				return
 			}
-			oggwrt, err := oggwriter.NewWith(file, 48000, 2)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			readStream(t, oggwrt)
+			_, _ = oggwriter.NewWith(file, 48000, 2)
+			// if err != nil {
+			// 	fmt.Println(err)
+			// 	return
+			// }
+			readStream(t, nil)
 		}()
 	})
 	return peerConn, nil

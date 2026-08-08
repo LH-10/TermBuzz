@@ -5,6 +5,8 @@ go 1.25.1
 require (
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/ebitengine/oto/v3 v3.4.0 // indirect
+	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/gen2brain/malgo v0.11.24 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
@@ -17,6 +19,7 @@ require (
 	github.com/pion/mdns v0.0.12 // indirect
 	github.com/pion/mdns/v2 v2.1.0 // indirect
 	github.com/pion/mediadevices v0.10.0 // indirect
+	github.com/pion/opus v0.1.0 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
 	github.com/pion/rtcp v1.2.16 // indirect
 	github.com/pion/rtp v1.8.26 // indirect
@@ -38,6 +41,6 @@ require (
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/image v0.23.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
