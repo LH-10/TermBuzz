@@ -80,10 +80,12 @@ import (
 //		peerConn *webrtc.PeerConnection
 //	}{}
 type opusCodecReader struct {
-	buf           []byte
-	opusDecoder   piopus.Decoder
-	bufOffset     int
-	segmentBuffer [][]byte
+	buf         []byte
+	opusDecoder piopus.Decoder
+	bufOffset   int
+	buffer      [10][]byte
+	indx        int
+	readindx    int
 }
 
 func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
@@ -91,22 +93,34 @@ func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
 		return 0, nil
 	}
 	var out []byte = make([]byte, 3890) //2*1920+50
-	band, isStr, err := ocr.opusDecoder.Decode(p, out)
-	fmt.Println("band:", band, "\nstero?", isStr)
+	_, _, err = ocr.opusDecoder.Decode(p, out)
+	// fmt.Println("band:", band, "\nstero?", isStr)
 	if err != nil {
 		fmt.Println("here")
 		fmt.Println("err:", err)
 		return 0, err
 	}
-	ocr.buf = append(ocr.buf, out...)
+
+	copy(ocr.buffer[ocr.indx], out)
+	ocr.indx = (ocr.indx + 1) % len(ocr.buffer)
 	return len(out), nil
 
 }
-func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
-	n = copy(p, ocr.buf)
+func (ocr *opusCodecReader) HasData() bool {
+	return ocr.indx > 2
+}
 
-	ocr.buf = ocr.buf[n:]
+func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
+	// n = copy(p, ocr.buf)
+	// for ocr.readindx == ocr.indx {
+	// }
+	n = copy(p, ocr.buffer[ocr.readindx])
+	fmt.Println("Read called with", n)
+	ocr.readindx = (ocr.readindx + 1) % len(ocr.buffer)
 	// go ocr.buf.Truncate(0)
+	// if n == 0 {
+	// 	return n, io.EOF
+	// }
 	return n, err
 
 }
@@ -189,8 +203,11 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 				fmt.Println(err)
 				return
 			}
-			var dt []byte = make([]byte, 0)
-			rdr := &opusCodecReader{opusDecoder: opusdecoder, buf: dt}
+			var dt [10][]byte
+			for i := range dt {
+				dt[i] = make([]byte, 3980)
+			}
+			rdr := &opusCodecReader{opusDecoder: opusdecoder, buf: make([]byte, 0), buffer: dt, indx: 0, readindx: 0}
 			otoCtxOpts := &oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2}
 			otoCtx, ready, err := oto.NewContext(otoCtxOpts)
 			if err != nil {
@@ -200,48 +217,63 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 			<-ready
 			otoply := otoCtx.NewPlayer(rdr)
 			thirdRead := 0
-			for {
-				if thirdRead%3 == 0 {
-					fmt.Println("reading.....")
-				}
 
-				packet, _, err := t.ReadRTP()
-				if err != nil {
-					log.Println(err)
-					return
-				}
-				sb.Push(packet)
-				for sample := sb.Pop(); sample != nil; sample = sb.Pop() {
+			go func() {
+				for {
 					if thirdRead%3 == 0 {
-						fmt.Println("extract sample on 3rd")
+						// fmt.Println("reading.....")
 					}
-					rdr.Write(sample.Data)
-				}
-				thirdRead++
-				// n, err := rdr.Write(packet.Payload)
-				// fmt.Println("wrote", n, "\n", "here")
-				// if err != nil {
-				// 	fmt.Println(err)
-				// 	return
-				// }
 
-				// go func() {
+					packet, _, err := t.ReadRTP()
+					if err != nil {
+						log.Println(err)
+						return
+					}
+
+					sb.Push(packet)
+
+					for sample := sb.Pop(); sample != nil; sample = sb.Pop() {
+						_, err := rdr.Write(sample.Data)
+
+						if thirdRead%3 == 0 {
+							// fmt.Println("extract sample on 3rd")
+							// fmt.Println("wrote n:", n)
+						}
+						if err != nil {
+							fmt.Println(err)
+						}
+					}
+
+					thirdRead++
+					// n, err := rdr.Write(packet.Payload)
+					// fmt.Println("wrote", n, "\n", "here")
+					// if err != nil {
+					// 	fmt.Println(err)
+					// 	return
+					// }
+
+				}
+			}()
+			for {
+
 				if !otoply.IsPlaying() {
+					for !rdr.HasData() {
+					}
 					fmt.Println("playing now")
 					otoply.Play()
 				}
-				// }()
-
-				// for _, payload := range data {
-				// 	fmt.Printf("%x", payload)
-				// }
-				// err = oggwrt.WriteRTP(packet)
-				// if err != nil {
-				// 	fmt.Println(err)
-				// 	return
-				// }
-
 			}
+			// time.Sleep(10 * time.Microsecond)
+
+			// for _, payload := range data {
+			// 	fmt.Printf("%x", payload)
+			// }
+			// err = oggwrt.WriteRTP(packet)
+			// if err != nil {
+			// 	fmt.Println(err)
+			// 	return
+			// }
+
 			// time.Sleep(time.Millisecond * 10)
 		}
 		go func() {
