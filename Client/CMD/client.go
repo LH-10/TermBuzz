@@ -39,8 +39,6 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
-	"github.com/pion/webrtc/v4/pkg/media"
-	"github.com/pion/webrtc/v4/pkg/media/oggwriter"
 	"github.com/pion/webrtc/v4/pkg/media/samplebuilder"
 )
 
@@ -74,11 +72,6 @@ import (
 // 	}
 // }
 
-// var peerConn *webrtc.PeerConnection
-
-//	var clientGlob = struct {
-//		peerConn *webrtc.PeerConnection
-//	}{}
 type opusCodecReader struct {
 	buf         []byte
 	opusDecoder piopus.Decoder
@@ -112,12 +105,11 @@ func (ocr *opusCodecReader) HasData() bool {
 
 func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 	// n = copy(p, ocr.buf)
-	// for ocr.readindx == ocr.indx {
-	// }
+	for ocr.readindx == ocr.indx {
+	}
 	n = copy(p, ocr.buffer[ocr.readindx])
 	fmt.Println("Read called with", n)
 	ocr.readindx = (ocr.readindx + 1) % len(ocr.buffer)
-	// go ocr.buf.Truncate(0)
 	// if n == 0 {
 	// 	return n, io.EOF
 	// }
@@ -141,6 +133,7 @@ func getAudio(codecSelector *mediadevices.CodecSelector) ([]mediadevices.Track, 
 	return audioTrack, nil
 }
 
+// creates peerconn with codecs and registers events  such as onTrack
 func createPeerConn() (*webrtc.PeerConnection, error) {
 	m := &webrtc.MediaEngine{}
 	if err := m.RegisterDefaultCodecs(); err != nil {
@@ -154,7 +147,6 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		panic(err)
 	}
 	codecSelector := mediadevices.NewCodecSelector(mediadevices.WithAudioEncoders(&opusParams))
-	// m.RegisterCodec()
 	codecSelector.Populate(m)
 	i := &interceptor.Registry{}
 	if err := webrtc.RegisterDefaultInterceptors(m, i); err != nil {
@@ -184,7 +176,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 
 		fmt.Print("recieving tracks")
 		fmt.Print("Paylaod tpe", t.PayloadType())
-		readStream := func(t *webrtc.TrackRemote, _ media.Writer) {
+		readStream := func(t *webrtc.TrackRemote) {
 			var depacktizer rtp.Depacketizer
 			switch t.Codec().MimeType {
 			case webrtc.MimeTypeOpus:
@@ -192,11 +184,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 			default:
 				fmt.Print("invalid codec")
 			}
-			// newTrack, err := webrtc.NewTrackLocalStaticSample(t.Codec().RTPCodecCapability, "decodestream", "pion")
-			// if err != nil {
-			// 	fmt.Println(err)
-			// 	return
-			// }
+
 			sb := samplebuilder.New(90, depacktizer, t.Codec().ClockRate)
 			opusdecoder, err := piopus.NewDecoderWithOutput(48000, 2)
 			if err != nil {
@@ -217,7 +205,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 			<-ready
 			otoply := otoCtx.NewPlayer(rdr)
 			thirdRead := 0
-
+			// gotSample := make(chan struct{})
 			go func() {
 				for {
 					if thirdRead%3 == 0 {
@@ -242,52 +230,29 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 						if err != nil {
 							fmt.Println(err)
 						}
+						// go func(){gotSample <- struct{}{}
 					}
 
 					thirdRead++
-					// n, err := rdr.Write(packet.Payload)
-					// fmt.Println("wrote", n, "\n", "here")
-					// if err != nil {
-					// 	fmt.Println(err)
-					// 	return
-					// }
 
 				}
 			}()
 			for {
-
+				// <-gotSample
 				if !otoply.IsPlaying() {
-					for !rdr.HasData() {
-					}
+
 					fmt.Println("playing now")
-					otoply.Play()
+					if rdr.HasData() {
+						otoply.Play()
+					}
 				}
 			}
-			// time.Sleep(10 * time.Microsecond)
-
-			// for _, payload := range data {
-			// 	fmt.Printf("%x", payload)
-			// }
-			// err = oggwrt.WriteRTP(packet)
-			// if err != nil {
-			// 	fmt.Println(err)
-			// 	return
-			// }
 
 			// time.Sleep(time.Millisecond * 10)
 		}
 		go func() {
-			file, err := os.OpenFile("./payload.ogg", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 644)
-			if err != nil {
-				fmt.Println("file error", err)
-				return
-			}
-			_, _ = oggwriter.NewWith(file, 48000, 2)
-			// if err != nil {
-			// 	fmt.Println(err)
-			// 	return
-			// }
-			readStream(t, nil)
+
+			readStream(t)
 		}()
 	})
 	return peerConn, nil
@@ -321,6 +286,7 @@ func handleMessage(peerConn *webrtc.PeerConnection, messenger *messaging, messag
 
 }
 
+// initiate sdp exchange
 func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever string) error {
 	if peerConn == nil {
 		var err error
@@ -374,6 +340,7 @@ func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever st
 	return nil
 }
 
+// read remote sdp and generate answer
 func incomingCall(reciever string, messenger messaging, peerConn *webrtc.PeerConnection, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
 	var err error
 	if peerConn == nil {
@@ -529,7 +496,7 @@ func main() {
 			fmt.Println("Message of type", newReciever.MessageType)
 			fmt.Println(newReciever.Payload.Message, "\t\n\n", newReciever)
 			switch newReciever.MessageType {
-			case constants.SDPExchange:
+			case constants.SDPExchange: //someone sent sdp to connect
 				fmt.Println("SDP Exchange initiated")
 				ans, err := incomingCall(newReciever.RecieverName, *msgr, peerConn, newReciever.Payload.SessionDescription)
 				if err != nil {
@@ -543,7 +510,7 @@ func main() {
 				messageToServer.Payload.SessionDescription = &ans
 				msgr.send(messageToServer)
 				fmt.Println("SDP answer sent")
-			case constants.SDPAnswer:
+			case constants.SDPAnswer: // got sdp answer as response from peer
 				fmt.Println("Got an answer")
 				err := readAnswer(peerConn, *newReciever.Payload.SessionDescription)
 				if err != nil {
