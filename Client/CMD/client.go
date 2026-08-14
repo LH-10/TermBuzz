@@ -498,7 +498,7 @@ func main() {
 			switch newReciever.MessageType {
 			case constants.SDPExchange: //someone sent sdp to connect
 				fmt.Println("SDP Exchange initiated")
-				ans, err := incomingCall(newReciever.RecieverName, *msgr, peerConn, newReciever.Payload.SessionDescription)
+				ans, err := incomingCall(newReciever.SenderName, *msgr, peerConn, newReciever.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
