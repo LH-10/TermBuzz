@@ -108,7 +108,7 @@ func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 	for ocr.readindx == ocr.indx {
 	}
 	n = copy(p, ocr.buffer[ocr.readindx])
-	fmt.Println("Read called with", n)
+	// fmt.Println("Read called with", n)
 	ocr.readindx = (ocr.readindx + 1) % len(ocr.buffer)
 	// if n == 0 {
 	// 	return n, io.EOF
@@ -153,8 +153,8 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		panic(err)
 	}
 	var config webrtc.Configuration
-	config.ICECandidatePoolSize = 1
 	config.ICEServers = []webrtc.ICEServer{{URLs: []string{"stun:stun1.l.google.com:19302"}}}
+
 	peerConn, err := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i)).NewPeerConnection(config)
 	if err != nil {
 		log.Println(err)
@@ -170,6 +170,9 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 	}
 	peerConn.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) { fmt.Print("webrtc Connection", pcs, "\n") })
 	peerConn.OnICEConnectionStateChange(func(is webrtc.ICEConnectionState) { fmt.Print("IceConnection State:", is.String()) })
+	peerConn.OnICEGatheringStateChange(func(is webrtc.ICEGatheringState) {
+		fmt.Print("Ice Gethering state:", is, "\n\n")
+	})
 
 	peerConn.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
 		fmt.Println("codec:", t.Codec())
@@ -241,8 +244,8 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 				// <-gotSample
 				if !otoply.IsPlaying() {
 
-					fmt.Println("playing now")
 					if rdr.HasData() {
+						fmt.Println("playing now")
 						otoply.Play()
 					}
 				}
@@ -297,8 +300,10 @@ func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever st
 	}
 	peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
+			fmt.Println("caller has nil candidate")
 			return
 		}
+		fmt.Println("on ice candidte fired")
 		candidate := i.ToJSON()
 		messenger.send(models.ClientMessageFormatFut{
 			RecieverName: reciever,
@@ -353,8 +358,10 @@ func incomingCall(reciever string, messenger messaging, peerConn *webrtc.PeerCon
 	}
 	peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
+			fmt.Println("nil  candidate object")
 			return
 		}
+		fmt.Println("on ice candidte fired")
 		candidate := i.ToJSON()
 		messenger.send(models.ClientMessageFormatFut{
 			RecieverName: reciever,
@@ -400,8 +407,8 @@ func (msg *messaging) send(message models.ClientMessageFormatFut) {
 	binMsg, err := SerializeMessage(message)
 
 	if err != nil {
-		log.Println("Error during serialize", err)
-		return
+		panic(fmt.Sprintf("Error during serialize %v", err))
+
 	}
 	msg.conn.Write(msg.ctx, websocket.MessageBinary, binMsg)
 }
@@ -482,7 +489,6 @@ func main() {
 	err = wsjson.Read(msgr.ctx, msgr.conn, &v)
 	menu := v.Message
 	var newReciever models.ClientMessageFormatFut
-
 	go func() {
 		for {
 			err = wsjson.Read(msgr.ctx, msgr.conn, &newReciever)
@@ -519,12 +525,16 @@ func main() {
 				}
 				fmt.Println("Got an answer", *peerConn.CurrentRemoteDescription() == *newReciever.Payload.SessionDescription)
 			case constants.Candidate:
+				fmt.Print("in ice candidates")
 				if newReciever.Payload.ICECandidateInit == nil {
 					fmt.Println(errors.New("Empty candidate in Paylod"))
 				}
+				fmt.Println("all set adding candidates")
 				err := peerConn.AddICECandidate(*newReciever.Payload.ICECandidateInit)
 				if err != nil {
 					log.Println(err)
+				} else {
+					fmt.Println("Added ", *newReciever.Payload.ICECandidateInit, " :CANDIDATE\n")
 				}
 			}
 		}
