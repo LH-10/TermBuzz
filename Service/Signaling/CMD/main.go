@@ -73,7 +73,9 @@ func main() {
 	var MenuForClient [4]string = [4]string{"1.Get Client List\n", "2.Connect to client , 3.SDP exchange"}
 	// fmt.Print(MenuForClient)
 	wsMux := http.NewServeMux()
-
+	wsMux.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("works"))
+	})
 	wsMux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			OriginPatterns: []string{"*"},
@@ -144,6 +146,24 @@ func main() {
 			case constants.SDPExchange, constants.SDPAnswer:
 				if clientMessage.RecieverName == "" {
 					fmt.Println("empty Reciver field")
+				}
+				clientMessage.SenderName = currentClient.name
+				recipentData := clients[clientMessage.RecieverName]
+				var binaryMessage []byte
+				binaryMessage, err = json.Marshal(clientMessage)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Println(clientMessage.SenderName, "->", clientMessage.RecieverName)
+				fmt.Println("clientmessage", clientMessage)
+				fmt.Println("Before wirte called")
+				err = recipentData.conn.Write(ctx, websocket.MessageBinary, binaryMessage)
+			case constants.Candidate:
+				fmt.Println("\n\nCANDIDATE : ********", "from ", currentClient.name, "\nto ", clientMessage.RecieverName, "*******", "\n\nPayload:", clientMessage.Payload)
+				if clientMessage.RecieverName == "" {
+					fmt.Println("empty Reciver field")
+					return
 				}
 				clientMessage.SenderName = currentClient.name
 				recipentData := clients[clientMessage.RecieverName]
