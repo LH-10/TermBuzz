@@ -30,16 +30,11 @@ import (
 	"github.com/LH-10/TermBuzz/shared/models"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/ebitengine/oto/v3"
 	"github.com/pion/interceptor"
 	"github.com/pion/mediadevices"
 	"github.com/pion/mediadevices/pkg/codec/opus"
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
-	piopus "github.com/pion/opus"
-	"github.com/pion/rtp"
-	"github.com/pion/rtp/codecs"
 	"github.com/pion/webrtc/v4"
-	"github.com/pion/webrtc/v4/pkg/media/samplebuilder"
 )
 
 // func chatWithClient(ctx context.Context, conn *websocket.Conn, messageStructure models.ClientMessageFormat) {
@@ -71,51 +66,6 @@ import (
 
 // 	}
 // }
-
-type opusCodecReader struct {
-	buf         []byte
-	opusDecoder piopus.Decoder
-	bufOffset   int
-	buffer      [10][]byte
-	indx        int
-	readindx    int
-}
-
-func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	var out []byte = make([]byte, 3890) //2*1920+50
-	_, _, err = ocr.opusDecoder.Decode(p, out)
-	// fmt.Println("band:", band, "\nstero?", isStr)
-	if err != nil {
-		fmt.Println("here")
-		fmt.Println("err:", err)
-		return 0, err
-	}
-
-	copy(ocr.buffer[ocr.indx], out)
-	ocr.indx = (ocr.indx + 1) % len(ocr.buffer)
-	return len(out), nil
-
-}
-func (ocr *opusCodecReader) HasData() bool {
-	return ocr.indx > 2
-}
-
-func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
-	// n = copy(p, ocr.buf)
-	for ocr.readindx == ocr.indx {
-	}
-	n = copy(p, ocr.buffer[ocr.readindx])
-	// fmt.Println("Read called with", n)
-	ocr.readindx = (ocr.readindx + 1) % len(ocr.buffer)
-	// if n == 0 {
-	// 	return n, io.EOF
-	// }
-	return n, err
-
-}
 
 type connector struct {
 	peerConn  *webrtc.PeerConnection
@@ -183,90 +133,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		fmt.Print("Ice Gethering state:", is, "\n\n")
 	})
 
-	peerConn.OnTrack(func(t *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
-		fmt.Println("codec:", t.Codec())
-
-		fmt.Print("recieving tracks")
-		fmt.Print("Paylaod tpe", t.PayloadType())
-		readStream := func(t *webrtc.TrackRemote) {
-			var depacktizer rtp.Depacketizer
-			switch t.Codec().MimeType {
-			case webrtc.MimeTypeOpus:
-				depacktizer = &codecs.OpusPacket{}
-			default:
-				fmt.Print("invalid codec")
-			}
-
-			sb := samplebuilder.New(90, depacktizer, t.Codec().ClockRate)
-			opusdecoder, err := piopus.NewDecoderWithOutput(48000, 2)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			var dt [10][]byte
-			for i := range dt {
-				dt[i] = make([]byte, 3980)
-			}
-			rdr := &opusCodecReader{opusDecoder: opusdecoder, buf: make([]byte, 0), buffer: dt, indx: 0, readindx: 0}
-			otoCtxOpts := &oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2}
-			otoCtx, ready, err := oto.NewContext(otoCtxOpts)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-			<-ready
-			otoply := otoCtx.NewPlayer(rdr)
-			thirdRead := 0
-			// gotSample := make(chan struct{})
-			go func() {
-				for {
-					if thirdRead%3 == 0 {
-						// fmt.Println("reading.....")
-					}
-
-					packet, _, err := t.ReadRTP()
-					if err != nil {
-						log.Println(err)
-						return
-					}
-
-					sb.Push(packet)
-
-					for sample := sb.Pop(); sample != nil; sample = sb.Pop() {
-						_, err := rdr.Write(sample.Data)
-
-						if thirdRead%3 == 0 {
-							// fmt.Println("extract sample on 3rd")
-							// fmt.Println("wrote n:", n)
-						}
-						if err != nil {
-							fmt.Println(err)
-						}
-						// go func(){gotSample <- struct{}{}
-					}
-
-					thirdRead++
-
-				}
-			}()
-			for {
-				// <-gotSample
-				if !otoply.IsPlaying() {
-
-					if rdr.HasData() {
-						fmt.Println("playing now")
-						otoply.Play()
-					}
-				}
-			}
-
-			// time.Sleep(time.Millisecond * 10)
-		}
-		go func() {
-
-			readStream(t)
-		}()
-	})
+	peerConn.OnTrack(handle_tracks)
 	return peerConn, nil
 }
 
