@@ -117,6 +117,15 @@ func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 
 }
 
+type connector struct {
+	peerConn  *webrtc.PeerConnection
+	signaling messaging
+}
+
+func (c *connector) GetWebSocketConn() *websocket.Conn {
+	return c.signaling.conn
+}
+
 func getAudio(codecSelector *mediadevices.CodecSelector) ([]mediadevices.Track, error) {
 	stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
 		Audio: func(mtc *mediadevices.MediaTrackConstraints) {
@@ -261,7 +270,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 	return peerConn, nil
 }
 
-func handleMessage(peerConn *webrtc.PeerConnection, messenger *messaging, messageToServer *models.ClientMessageFormatFut, inps *bufio.Scanner) {
+func handleMessage(myConn *connector, messageToServer *models.ClientMessageFormatFut, inps *bufio.Scanner) {
 	switch messageToServer.Payload.Message {
 	case "1":
 		messageToServer.MessageType = constants.RequestPeerList
@@ -280,7 +289,7 @@ func handleMessage(peerConn *webrtc.PeerConnection, messenger *messaging, messag
 		inps.Scan()
 		recvr := inps.Text()
 		fmt.Println("making call")
-		makeCall(peerConn, messenger, recvr)
+		makeCall(myConn, recvr)
 		fmt.Println("made call")
 	default:
 		fmt.Println("Invlaid choice")
@@ -290,22 +299,24 @@ func handleMessage(peerConn *webrtc.PeerConnection, messenger *messaging, messag
 }
 
 // initiate sdp exchange
-func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever string) error {
-	if peerConn == nil {
+func makeCall(myConn *connector, reciever string) error {
+	if myConn.peerConn == nil {
 		var err error
-		peerConn, err = createPeerConn()
+		fmt.Println("here  make call ")
+		myConn.peerConn, err = createPeerConn()
 		if err != nil {
+			fmt.Println("error")
 			return err
 		}
 	}
-	peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
+	myConn.peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
 			fmt.Println("caller has nil candidate")
 			return
 		}
 		fmt.Println("on ice candidte fired")
 		candidate := i.ToJSON()
-		messenger.send(models.ClientMessageFormatFut{
+		myConn.signaling.send(models.ClientMessageFormatFut{
 			RecieverName: reciever,
 			MessageType:  constants.Candidate, //candidtae type new
 			Payload: struct {
@@ -318,17 +329,17 @@ func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever st
 			},
 		})
 	})
-	sdp, err := peerConn.CreateOffer(&webrtc.OfferOptions{})
+	sdp, err := myConn.peerConn.CreateOffer(&webrtc.OfferOptions{})
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
-	err = peerConn.SetLocalDescription(sdp)
+	err = myConn.peerConn.SetLocalDescription(sdp)
 	if err != nil {
 		return err
 	}
-	messenger.send(models.ClientMessageFormatFut{
+	myConn.signaling.send(models.ClientMessageFormatFut{
 
 		RecieverName: reciever,
 		MessageType:  constants.SDPExchange,
@@ -346,24 +357,25 @@ func makeCall(peerConn *webrtc.PeerConnection, messenger *messaging, reciever st
 }
 
 // read remote sdp and generate answer
-func incomingCall(reciever string, messenger messaging, peerConn *webrtc.PeerConnection, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+func incomingCall(reciever string, myConn *connector, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
 	var err error
-	if peerConn == nil {
-
-		peerConn, err = createPeerConn()
+	if myConn.peerConn == nil {
+		fmt.Println("here incoming")
+		myConn.peerConn, err = createPeerConn()
 		if err != nil {
+			fmt.Println("error")
 			fmt.Println("error while creating peerconn obj")
 			return webrtc.SessionDescription{}, err
 		}
 	}
-	peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
+	myConn.peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
 			fmt.Println("nil  candidate object")
 			return
 		}
 		fmt.Println("on ice candidte fired")
 		candidate := i.ToJSON()
-		messenger.send(models.ClientMessageFormatFut{
+		myConn.signaling.send(models.ClientMessageFormatFut{
 			RecieverName: reciever,
 			MessageType:  constants.Candidate, //candidtae type new
 			Payload: struct {
@@ -377,14 +389,14 @@ func incomingCall(reciever string, messenger messaging, peerConn *webrtc.PeerCon
 		})
 	})
 	fmt.Println("sdp from remote peer :", *remoteSDP, "\n\n ")
-	peerConn.SetRemoteDescription(*remoteSDP)
-	ansSDP, err := peerConn.CreateAnswer(nil)
+	myConn.peerConn.SetRemoteDescription(*remoteSDP)
+	ansSDP, err := myConn.peerConn.CreateAnswer(nil)
 	if err != nil {
 		fmt.Println(err)
 		return webrtc.SessionDescription{}, err
 	}
 	fmt.Println("created ansSPD:", ansSDP)
-	err = peerConn.SetLocalDescription(ansSDP)
+	err = myConn.peerConn.SetLocalDescription(ansSDP)
 	if err != nil {
 		return webrtc.SessionDescription{}, err
 	}
@@ -421,25 +433,26 @@ func main() {
 	fmt.Println("Enter your name :")
 
 	var err error
-	var peerConn *webrtc.PeerConnection
-	peerConn, err = createPeerConn()
-	if err != nil {
-		log.Println(err)
-	}
+	// var peerConn *webrtc.PeerConnection
+	// peerConn, err = createPeerConn()
+	// if err != nil {
+	// 	log.Println(err)
+	// }
 
+	myConn := connector{}
 	var messageToServer models.ClientMessageFormatFut
 	fmt.Scan(&messageToServer.SenderName)
-	msgr := &messaging{}
-	msgr.ctx = context.Background()
+	// msgr := messaging{}
+	myConn.signaling = messaging{ctx: context.Background()}
 	ipadd := flag.String("ip", "192.168.1.5", "ipaddress of server")
 	port := "8081"
 	flag.Parse()
 	address := fmt.Sprintf("ws://%s:%s", *ipadd, port)
-	msgr.conn, _, err = websocket.Dial(msgr.ctx, address, nil)
+	myConn.signaling.conn, _, err = websocket.Dial(myConn.signaling.ctx, address, nil)
 	if err != nil {
 		log.Println(err)
 	}
-	defer msgr.conn.CloseNow()
+	defer myConn.GetWebSocketConn().CloseNow()
 	var v models.ServerMessage
 
 	fmt.Println("Enter 1 to request cleint ID any other key to skip")
@@ -461,14 +474,14 @@ func main() {
 			fmt.Println("here")
 		}
 
-		err = wsjson.Write(msgr.ctx, msgr.conn, messageToServer)
+		err = wsjson.Write(myConn.signaling.ctx, myConn.GetWebSocketConn(), messageToServer)
 		if err != nil {
 			fmt.Println("err:", err)
 			return
 		}
 		fmt.Println("Waiting for id......")
 		for {
-			err = wsjson.Read(msgr.ctx, msgr.conn, &v)
+			err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &v)
 			if err != nil {
 				fmt.Println("Error:", err)
 				runtime.Goexit()
@@ -486,15 +499,15 @@ func main() {
 
 	messageToServer.MessageType = constants.Blank
 	inps := bufio.NewScanner(os.Stdin)
-	err = wsjson.Read(msgr.ctx, msgr.conn, &v)
+	err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &v)
 	menu := v.Message
 	var newReciever models.ClientMessageFormatFut
 	go func() {
 		for {
-			err = wsjson.Read(msgr.ctx, msgr.conn, &newReciever)
+			err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &newReciever)
 			if err != nil {
 				fmt.Println(err.Error(), err)
-				if msgr.conn.Ping(msgr.ctx) != nil {
+				if myConn.GetWebSocketConn().Ping(myConn.signaling.ctx) != nil {
 					fmt.Println("Cannot connect")
 					runtime.Goexit()
 				}
@@ -504,7 +517,7 @@ func main() {
 			switch newReciever.MessageType {
 			case constants.SDPExchange: //someone sent sdp to connect
 				fmt.Println("SDP Exchange initiated")
-				ans, err := incomingCall(newReciever.SenderName, *msgr, peerConn, newReciever.Payload.SessionDescription)
+				ans, err := incomingCall(newReciever.SenderName, &myConn, newReciever.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
@@ -514,27 +527,27 @@ func main() {
 				messageToServer.MessageType = constants.SDPAnswer
 				messageToServer.Payload.Message = "SDPAnswer"
 				messageToServer.Payload.SessionDescription = &ans
-				msgr.send(messageToServer)
+				myConn.signaling.send(messageToServer)
 				fmt.Println("SDP answer sent")
 			case constants.SDPAnswer: // got sdp answer as response from peer
 				fmt.Println("Got an answer")
-				err := readAnswer(peerConn, *newReciever.Payload.SessionDescription)
+				err := readAnswer(myConn.peerConn, *newReciever.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Println("Got an answer", *peerConn.CurrentRemoteDescription() == *newReciever.Payload.SessionDescription)
+				fmt.Println("Got an answer", *myConn.peerConn.CurrentRemoteDescription() == *newReciever.Payload.SessionDescription)
 			case constants.Candidate:
 				fmt.Print("in ice candidates")
 				if newReciever.Payload.ICECandidateInit == nil {
 					fmt.Println(errors.New("Empty candidate in Paylod"))
 				}
 				fmt.Println("all set adding candidates")
-				err := peerConn.AddICECandidate(*newReciever.Payload.ICECandidateInit)
+				err := myConn.peerConn.AddICECandidate(*newReciever.Payload.ICECandidateInit)
 				if err != nil {
 					log.Println(err)
 				} else {
-					fmt.Println("Added ", *newReciever.Payload.ICECandidateInit, " :CANDIDATE\n")
+					fmt.Println("Added ", *newReciever.Payload.ICECandidateInit, " :CANDIDATE\n ")
 				}
 			}
 		}
@@ -548,10 +561,10 @@ func main() {
 			break
 		}
 
-		handleMessage(peerConn, msgr, &messageToServer, inps)
+		handleMessage(&myConn, &messageToServer, inps)
 
 		if messageToServer.Payload.Message != "" {
-			err = wsjson.Write(msgr.ctx, msgr.conn, messageToServer)
+			err = wsjson.Write(myConn.signaling.ctx, myConn.GetWebSocketConn(), messageToServer)
 			messageToServer.Payload.Message = ""
 
 		}
@@ -559,9 +572,9 @@ func main() {
 		// log.Println(v)
 		if err != nil {
 			log.Println(err)
-			if msgr.conn.Ping(msgr.ctx) != nil {
+			if myConn.GetWebSocketConn().Ping(myConn.signaling.ctx) != nil {
 				log.Println("Cannot connect")
-				msgr.conn.CloseNow()
+				myConn.GetWebSocketConn().CloseNow()
 				runtime.Goexit()
 			}
 		}
@@ -569,5 +582,5 @@ func main() {
 		fmt.Println(menu)
 	}
 
-	msgr.conn.Close(websocket.StatusNormalClosure, "closed")
+	myConn.GetWebSocketConn().Close(websocket.StatusNormalClosure, "closed")
 }

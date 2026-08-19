@@ -30,10 +30,6 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-func processClientRequest(clientRequest any) {
-
-}
-
 type Client struct {
 	conn *websocket.Conn
 	id   int
@@ -54,9 +50,7 @@ func ClientToClient(sender *websocket.Conn, recievername string, ctx context.Con
 		fmt.Println(sendername, " has wrong connection id ")
 		return
 	}
-	var clietnMessageFormatHolder models.ClientMessageFormat
 	var serverMsg models.ServerMessage
-	fmt.Println(clietnMessageFormatHolder)
 	var recieverConnection *websocket.Conn
 	recieverConnection = clients[recievername].conn
 	fmt.Println("Sender", sendername, "\n reciever conn", recieverConnection)
