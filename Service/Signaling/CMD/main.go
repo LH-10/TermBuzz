@@ -71,16 +71,21 @@ func main() {
 		w.Write([]byte("works"))
 	})
 	wsMux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			log.Println("user does not want to connect to websockt")
+			return
+		}
 		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 			OriginPatterns: []string{"*"},
 		})
+		if err != nil {
+			log.Println(err)
+			return
+		}
 		currentClient := &Client{conn: c, id: int(time.Now().Unix())}
 
 		// clients = append(clients, currentClient)
 		fmt.Println("New connection", clients)
-		if err != nil {
-			log.Println(err)
-		}
 		defer c.CloseNow()
 		numclient++
 		ctx := context.Background()
