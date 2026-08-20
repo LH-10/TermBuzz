@@ -368,10 +368,10 @@ func main() {
 	inps := bufio.NewScanner(os.Stdin)
 	err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &v)
 	menu := v.Message
-	var newReciever models.ClientMessageFormatFut
+	var message_receiver models.ClientMessageFormatFut
 	go func() {
 		for {
-			err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &newReciever)
+			err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &message_receiver)
 			if err != nil {
 				fmt.Println(err.Error(), err)
 				if myConn.GetWebSocketConn().Ping(myConn.signaling.ctx) != nil {
@@ -379,18 +379,18 @@ func main() {
 					runtime.Goexit()
 				}
 			}
-			fmt.Println("Message of type", newReciever.MessageType)
-			fmt.Println(newReciever.Payload.Message, "\t\n\n", newReciever)
-			switch newReciever.MessageType {
+			fmt.Println("Message of type", message_receiver.MessageType)
+			fmt.Println(message_receiver.Payload.Message, "\t\n\n", message_receiver)
+			switch message_receiver.MessageType {
 			case constants.SDPExchange: //someone sent sdp to connect
 				fmt.Println("SDP Exchange initiated")
-				ans, err := incomingCall(newReciever.SenderName, &myConn, newReciever.Payload.SessionDescription)
+				ans, err := incomingCall(message_receiver.SenderName, &myConn, message_receiver.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
-				messageToServer.RecieverName = newReciever.SenderName
-				messageToServer.SenderName = newReciever.RecieverName
+				messageToServer.RecieverName = message_receiver.SenderName
+				messageToServer.SenderName = message_receiver.RecieverName
 				messageToServer.MessageType = constants.SDPAnswer
 				messageToServer.Payload.Message = "SDPAnswer"
 				messageToServer.Payload.SessionDescription = &ans
@@ -398,23 +398,23 @@ func main() {
 				fmt.Println("SDP answer sent")
 			case constants.SDPAnswer: // got sdp answer as response from peer
 				fmt.Println("Got an answer")
-				err := readAnswer(myConn.peerConn, *newReciever.Payload.SessionDescription)
+				err := readAnswer(myConn.peerConn, *message_receiver.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Println("Got an answer", *myConn.peerConn.CurrentRemoteDescription() == *newReciever.Payload.SessionDescription)
+				fmt.Println("Got an answer", *myConn.peerConn.CurrentRemoteDescription() == *message_receiver.Payload.SessionDescription)
 			case constants.Candidate:
 				fmt.Print("in ice candidates")
-				if newReciever.Payload.ICECandidateInit == nil {
+				if message_receiver.Payload.ICECandidateInit == nil {
 					fmt.Println(errors.New("Empty candidate in Paylod"))
 				}
 				fmt.Println("all set adding candidates")
-				err := myConn.peerConn.AddICECandidate(*newReciever.Payload.ICECandidateInit)
+				err := myConn.peerConn.AddICECandidate(*message_receiver.Payload.ICECandidateInit)
 				if err != nil {
 					log.Println(err)
 				} else {
-					fmt.Println("Added ", *newReciever.Payload.ICECandidateInit, " :CANDIDATE\n ")
+					fmt.Println("Added ", *message_receiver.Payload.ICECandidateInit, " :CANDIDATE\n ")
 				}
 			}
 		}
