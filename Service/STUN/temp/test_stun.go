@@ -19,6 +19,18 @@ func main() {
 		panic(err)
 	}
 	tc := time.NewTicker(time.Second * 2)
+	go func() {
+		for {
+			p := make([]byte, 1024)
+			_, addr, err := conn.ReadFrom(p)
+			if err == nil {
+				fmt.Println(addr.String(), "\n", string(p))
+				continue
+			}
+			fmt.Println("exiting", err)
+			return
+		}
+	}()
 	defer tc.Stop()
 	for _ = range tc.C {
 
