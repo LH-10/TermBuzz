@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.ParseIP("localhost"), Port: 3481})
+	conn, err := net.DialUDP("udp4", &net.UDPAddr{IP: net.ParseIP("localhost"), Port: 3409}, &net.UDPAddr{IP: net.ParseIP("localhost"), Port: 3481})
 	if err != nil {
 		panic(err)
 	}
@@ -19,9 +19,9 @@ func main() {
 		panic(err)
 	}
 	tc := time.NewTicker(time.Second * 2)
+	p := make([]byte, 1024)
 	go func() {
 		for {
-			p := make([]byte, 1024)
 			_, addr, err := conn.ReadFrom(p)
 			if err == nil {
 				fmt.Println(addr.String(), "\n", string(p))
@@ -32,11 +32,12 @@ func main() {
 		}
 	}()
 	defer tc.Stop()
-	for _ = range tc.C {
+	for {
 
 		if err := stc.Start(stun.MustBuild(stun.BindingRequest, stun.TransactionID), func(e stun.Event) { fmt.Println(e) }); err != nil {
 			fmt.Println(err)
+			continue
 		}
+
 	}
-	fmt.Println("Persisting")
 }

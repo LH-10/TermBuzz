@@ -6,7 +6,7 @@ import (
 
 func main() {
 	var err error
-	conn, err := stun.Listen("127.0.0.1")
+	conn, err := stun.Listen("localhost")
 	if err != nil {
 		panic(err)
 	}

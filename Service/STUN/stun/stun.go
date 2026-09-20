@@ -15,11 +15,19 @@ type SomeName struct {
 const stunSize int = 200
 const udpSize int = 1400
 
-func Process(conn net.PacketConn) error {
+func Process(conn *net.UDPConn) error {
 	for {
 
 		pb := make([]byte, udpSize+stunSize)
-		_, addr, err := conn.ReadFrom(pb)
+		_, addr, err := conn.ReadFromUDPAddrPort(pb)
+		port := addr.Port()
+		bin_ipv4 := addr.Addr().As4()
+		fmt.Printf("bin %x\n", bin_ipv4)
+		var ipv4addr uint32
+		ipv4addr = uint32(bin_ipv4[3]) << 24
+		ipv4addr |= (uint32(bin_ipv4[2]) << 16)
+		ipv4addr |= (uint32(bin_ipv4[1]) << 8)
+		ipv4addr |= uint32(bin_ipv4[0])
 		if err != nil {
 			fmt.Println(err)
 			return err
@@ -38,11 +46,14 @@ func Process(conn net.PacketConn) error {
 		messagetypefull |= uint16(messagetype[1])
 		messagelength := data[2:4]
 		var magic_cookie uint32
+
 		mcb := data[4:8]
 		magic_cookie = uint32(mcb[0]) << 24
 		magic_cookie |= (uint32(mcb[1]) << 16)
 		magic_cookie |= (uint32(mcb[2]) << 8)
 		magic_cookie |= (uint32(mcb[3]))
+		xor_mapped_port := port ^ uint16(magic_cookie>>16)
+		xor_mapped_address := ipv4addr ^ magic_cookie
 		trcb := data[8:20]
 		var transactionID1 uint64
 		var transactionID2 uint32
@@ -70,16 +81,27 @@ func Process(conn net.PacketConn) error {
 		// tp:=stun.NewType(stun.MethodBinding,stun.BindingSuccess.Class)
 		// m2:=stun.NewWithOptions(stun.WithStrict())
 		// (tp)
-		_, err = conn.WriteTo([]byte("message recieved"), addr)
+		// func xormapping(){
+
+		// }
+		fmt.Printf("xor: %x %x\n", xor_mapped_address, xor_mapped_port)
+		var send = stun.New()
+		xmap := stun.XORMappedAddress{IP: net.ParseIP(addr.Addr().String())}
+		xmap.AddTo(send)
+		fmt.Printf("send %v", send.Attributes)
+		_, err = conn.WriteToUDPAddrPort(append([]byte{}, byte(xor_mapped_address>>24), byte(xor_mapped_address<<8>>24),
+			byte(xor_mapped_address<<16>>24), byte(xor_mapped_address<<24>>24), byte(','), byte(' '),
+			byte(xor_mapped_port>>8), byte(xor_mapped_port<<8>>8)), addr)
 		if err != nil {
 			fmt.Println(err)
 		}
 		fmt.Printf("message %v \n transaction %x", msg, msg.TransactionID)
+		fmt.Printf("\nrexor: %x.%x.%x.%x  %x\n", (xor_mapped_address^magic_cookie)>>24, (xor_mapped_address^magic_cookie)<<8>>24, (xor_mapped_address^magic_cookie)<<16>>24, (xor_mapped_address^magic_cookie)<<24>>24, xor_mapped_port^uint16(magic_cookie>>16))
 
 	}
 }
 
-func Listen(address string) (net.PacketConn, error) {
+func Listen(address string) (*net.UDPConn, error) {
 
 	udp_conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP(address), Port: 3481})
 	if err != nil {
