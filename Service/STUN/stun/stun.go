@@ -78,6 +78,23 @@ func Process(conn *net.UDPConn) error {
 			fmt.Println(err)
 			return err
 		}
+		// xor_map_attr_type := [2]byte{0, 0x20}
+		xor_ipv4_attribute_length := [2]byte{0x0, 0x8}
+		xor_ipv6_attribute_length := [2]byte{0x0, 0x14}
+		var ipv4_family byte = 0x01
+		var ipv6_family byte = 0x02
+		var reserved byte = 0
+		//			2 bytes (32bits)           2 bytes (32bits)
+		// ___________________________________________________________
+		//|			Attribute Type		|		Attribute Length	  |
+		//|_____________________________|_____________________________|
+		//|				|		     (Data)  	  					  |
+		//|	  Reserved  |   Family  	|		Xor-Port		      |
+		//|_____________|_______________|_____________________________|
+		//|															  |
+		//|						 Xor-Address						  |
+		//| __________________________________________________________|
+
 		// tp:=stun.NewType(stun.MethodBinding,stun.BindingSuccess.Class)
 		// m2:=stun.NewWithOptions(stun.WithStrict())
 		// (tp)
