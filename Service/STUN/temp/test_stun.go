@@ -19,12 +19,14 @@ func main() {
 		panic(err)
 	}
 	tc := time.NewTicker(time.Second * 2)
-	p := make([]byte, 1024)
 	go func() {
+		p := make([]byte, 124)
 		for {
 			_, addr, err := conn.ReadFrom(p)
 			if err == nil {
-				fmt.Println(addr.String(), "\n", string(p))
+				fmt.Print("stun?", stun.IsMessage(p))
+				fmt.Println(addr.String(), "\n")
+				fmt.Printf("%x", p)
 				continue
 			}
 			fmt.Println("exiting", err)

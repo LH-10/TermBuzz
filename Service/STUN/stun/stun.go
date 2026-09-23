@@ -78,11 +78,11 @@ func Process(conn *net.UDPConn) error {
 			fmt.Println(err)
 			return err
 		}
-		// xor_map_attr_type := [2]byte{0, 0x20}
+		xor_map_attr_type := [2]byte{0, 0x20}
 		xor_ipv4_attribute_length := [2]byte{0x0, 0x8}
-		xor_ipv6_attribute_length := [2]byte{0x0, 0x14}
+		// xor_ipv6_attribute_length := [2]byte{0x0, 0x14}
 		var ipv4_family byte = 0x01
-		var ipv6_family byte = 0x02
+		// var ipv6_family byte = 0x02
 		var reserved byte = 0
 		//			2 bytes (32bits)           2 bytes (32bits)
 		// ___________________________________________________________
@@ -94,6 +94,9 @@ func Process(conn *net.UDPConn) error {
 		//|															  |
 		//|						 Xor-Address						  |
 		//| __________________________________________________________|
+		//
+		// Xor-Address is 4 bytes on ipv4 and 8 bytes on ipv6
+		// Attribute type field is of 2 bytes 0x0020 represnts Xor-Mapped-Address Attribute
 
 		// tp:=stun.NewType(stun.MethodBinding,stun.BindingSuccess.Class)
 		// m2:=stun.NewWithOptions(stun.WithStrict())
@@ -101,14 +104,22 @@ func Process(conn *net.UDPConn) error {
 		// func xormapping(){
 
 		// }
-		fmt.Printf("xor: %x %x\n", xor_mapped_address, xor_mapped_port)
+		//
+		reply_bytes := []byte{byte(0), byte(0), byte(0), 0x0c, mcb[0], mcb[1], mcb[2], mcb[3]}
+		reply_bytes = append(reply_bytes, trcb...)
+		reply_bytes = append(reply_bytes, xor_map_attr_type[:]...)
+		reply_bytes = append(reply_bytes, xor_ipv4_attribute_length[:]...)
+		reply_bytes = append(reply_bytes, reserved)
+		reply_bytes = append(reply_bytes, ipv4_family)
+		reply_bytes = append(reply_bytes, byte(xor_mapped_port<<8>>8), byte(xor_mapped_port>>8))
+		reply_bytes = append(reply_bytes, byte(xor_mapped_address<<24>>24), byte(xor_mapped_address<<16>>24), byte(xor_mapped_address<<8>>24), byte(xor_mapped_address>>24))
+		fmt.Println("stun?????", stun.IsMessage(reply_bytes))
+		fmt.Printf("\n\nxor: %x %x\n", xor_mapped_address, xor_mapped_port)
 		var send = stun.New()
 		xmap := stun.XORMappedAddress{IP: net.ParseIP(addr.Addr().String())}
 		xmap.AddTo(send)
 		fmt.Printf("send %v", send.Attributes)
-		_, err = conn.WriteToUDPAddrPort(append([]byte{}, byte(xor_mapped_address>>24), byte(xor_mapped_address<<8>>24),
-			byte(xor_mapped_address<<16>>24), byte(xor_mapped_address<<24>>24), byte(','), byte(' '),
-			byte(xor_mapped_port>>8), byte(xor_mapped_port<<8>>8)), addr)
+		_, err = conn.WriteToUDPAddrPort(reply_bytes, addr)
 		if err != nil {
 			fmt.Println(err)
 		}
