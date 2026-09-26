@@ -12,6 +12,29 @@ type SomeName struct {
 	conn net.PacketConn
 }
 
+type Method uint16
+
+const (
+	MethodBinding Method = 0x01
+)
+
+type MessageClass uint16
+
+const (
+	Request        MessageClass = 0x00
+	Indication     MessageClass = 0x01
+	SuccessRespone MessageClass = 0x10
+	ErrorResponse  MessageClass = 0x11
+)
+
+func makeMessageType(mthd Method, mcs MessageClass) uint16 {
+
+}
+
+func encodeMessageType(mtype uint16) [2]byte {
+	return [2]byte{byte(mtype >> 8), byte(mtype << 8 >> 8)}
+}
+
 const stunSize int = 200
 const udpSize int = 1400
 
