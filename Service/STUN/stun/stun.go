@@ -21,14 +21,37 @@ const (
 type MessageClass uint16
 
 const (
-	Request        MessageClass = 0x00
-	Indication     MessageClass = 0x01
-	SuccessRespone MessageClass = 0x10
-	ErrorResponse  MessageClass = 0x11
+	Request        MessageClass = 0b00
+	Indication     MessageClass = 0b01
+	SuccessRespone MessageClass = 0b10
+	ErrorResponse  MessageClass = 0b11
 )
 
-func makeMessageType(mthd Method, mcs MessageClass) uint16 {
+//     0                 1
+//     2  3  4 5 6 7 8 9 0 1 2 3 4 5
+//    +--+--+-+-+-+-+-+-+-+-+-+-+-+-+
+//    |M |M |M|M|M|C|M|M|M|C|M|M|M|M|
+//    |11|10|9|8|7|1|6|5|4|0|3|2|1|0|
+//    +--+--+-+-+-+-+-+-+-+-+-+-+-+-+
+//   "From RFC 8489 section-5 Fig 3"
 
+func makeMessageType(method Method, mclass MessageClass) uint16 {
+	mthd := uint16(method)
+	m7_to_m11 := mthd & 0xf80 //   0b111110000000
+	m4_to_m6 := mthd & 0x70   //   0b000001110000
+	m0_to_m3 := mthd & 0xf    //   0b000000001111
+
+	//shifting m4_to_m6 by 1 creates 1 bit space for c0 bit of class
+	//shifting m7_to_m11 by 2 creates 1 bit space for c1 bit of class (2 shift because C0 also exists taking 1 space of the 14 bits )
+	mthd = m0_to_m3 + (m4_to_m6 << 1) + (m7_to_m11 << 2)
+
+	class := uint16(mclass)
+	c0 := class & 0x1
+	c1 := class & 0x2
+
+	//place c0 at 5th pos and c1 at 8th pos
+	class = (c0 << 4) + (c1 << 7)
+	return mthd + class
 }
 
 func encodeMessageType(mtype uint16) [2]byte {
@@ -128,7 +151,8 @@ func Process(conn *net.UDPConn) error {
 
 		// }
 		//
-		reply_bytes := []byte{byte(0), byte(0), byte(0), 0x0c, mcb[0], mcb[1], mcb[2], mcb[3]}
+		type_binding_response := encodeMessageType(makeMessageType(MethodBinding, SuccessRespone))
+		reply_bytes := []byte{type_binding_response[0], type_binding_response[1], byte(0), 0x0c, mcb[0], mcb[1], mcb[2], mcb[3]}
 		reply_bytes = append(reply_bytes, trcb...)
 		reply_bytes = append(reply_bytes, xor_map_attr_type[:]...)
 		reply_bytes = append(reply_bytes, xor_ipv4_attribute_length[:]...)
