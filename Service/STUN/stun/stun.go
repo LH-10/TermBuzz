@@ -12,6 +12,8 @@ type SomeName struct {
 	conn net.PacketConn
 }
 
+var magic_cookie uint32 = 0x2112A442
+
 type Method uint16
 
 const (
@@ -58,6 +60,17 @@ func encodeMessageType(mtype uint16) [2]byte {
 	return [2]byte{byte(mtype >> 8), byte(mtype << 8 >> 8)}
 }
 
+func isPayloadStun(p []byte) bool {
+
+	if len(p) < 20 {
+		return false
+	}
+	magic_cookie_bytes := p[4:8]
+
+	return (magic_cookie_bytes[0] == byte(magic_cookie>>24) && magic_cookie_bytes[1] == byte(magic_cookie>>16) &&
+		magic_cookie_bytes[2] == byte(magic_cookie>>8) && magic_cookie_bytes[3] == byte(magic_cookie))
+}
+
 const stunSize int = 200
 const udpSize int = 1400
 
@@ -66,6 +79,11 @@ func Process(conn *net.UDPConn) error {
 
 		pb := make([]byte, udpSize+stunSize)
 		_, addr, err := conn.ReadFromUDPAddrPort(pb)
+		if !isPayloadStun(pb) {
+			err = fmt.Errorf("Invalid Payload %x", pb)
+			fmt.Println(err)
+			return err
+		}
 		port := addr.Port()
 		bin_ipv4 := addr.Addr().As4()
 		fmt.Printf("bin %x\n", bin_ipv4)
