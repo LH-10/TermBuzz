@@ -25,8 +25,16 @@ func main() {
 			_, addr, err := conn.ReadFrom(p)
 			if err == nil {
 				fmt.Print("stun?", stun.IsMessage(p))
+				msg := stun.New()
+				err := stun.Decode(p, msg)
+				if err != nil {
+					fmt.Print(err, "Error:decoding")
+					continue
+				}
+				fmt.Println("Stn:", msg)
 				fmt.Println(addr.String(), "\n")
-				fmt.Printf("%x", p)
+				// fmt.Printf("%x", p)
+				fmt.Println("Stn:", msg.Attributes[0])
 				continue
 			}
 			fmt.Println("exiting", err)
@@ -34,8 +42,8 @@ func main() {
 		}
 	}()
 	defer tc.Stop()
-	for {
-
+	for _ = range tc.C {
+		fmt.Println("\n-----Sending----")
 		if err := stc.Start(stun.MustBuild(stun.BindingRequest, stun.TransactionID), func(e stun.Event) { fmt.Println(e) }); err != nil {
 			fmt.Println(err)
 			continue

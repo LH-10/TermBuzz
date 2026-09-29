@@ -71,6 +71,25 @@ func isPayloadStun(p []byte) bool {
 		magic_cookie_bytes[2] == byte(magic_cookie>>8) && magic_cookie_bytes[3] == byte(magic_cookie))
 }
 
+// takes array of 2 bytes containing messageType inside stun header
+func GetMessageType(messageType []byte) (Method, MessageClass) {
+
+	mtype := uint16(messageType[0])<<8 | uint16(messageType[1])
+
+	a := (mtype >> 2) & 0b111110000000
+	b := (mtype >> 1) & 0b000001110000
+	c := mtype & 0xF
+
+	methodValue := a + b + c
+
+	c0 := (mtype >> 4) & 0x1
+	c1 := (mtype >> 7) & 0x2
+
+	class := c0 + c1
+
+	return Method(methodValue), MessageClass(class)
+}
+
 const stunSize int = 200
 const udpSize int = 1400
 
@@ -82,8 +101,18 @@ func Process(conn *net.UDPConn) error {
 		if !isPayloadStun(pb) {
 			err = fmt.Errorf("Invalid Payload %x", pb)
 			fmt.Println(err)
-			return err
+			continue
 		}
+		stunTypeMethod, stunTypeClass := GetMessageType(pb[0:2])
+		if stunTypeClass != Request || stunTypeMethod != MethodBinding {
+
+			_, err = conn.WriteToUDPAddrPort([]byte("cannot process request"), addr)
+			if err != nil {
+				fmt.Println("Error:", err)
+			}
+			continue
+		}
+
 		port := addr.Port()
 		bin_ipv4 := addr.Addr().As4()
 		fmt.Printf("bin %x\n", bin_ipv4)
@@ -112,10 +141,7 @@ func Process(conn *net.UDPConn) error {
 		var magic_cookie uint32
 
 		mcb := data[4:8]
-		magic_cookie = uint32(mcb[0]) << 24
-		magic_cookie |= (uint32(mcb[1]) << 16)
-		magic_cookie |= (uint32(mcb[2]) << 8)
-		magic_cookie |= (uint32(mcb[3]))
+
 		xor_mapped_port := port ^ uint16(magic_cookie>>16)
 		xor_mapped_address := ipv4addr ^ magic_cookie
 		trcb := data[8:20]
@@ -189,7 +215,6 @@ func Process(conn *net.UDPConn) error {
 			fmt.Println(err)
 		}
 		fmt.Printf("message %v \n transaction %x", msg, msg.TransactionID)
-		fmt.Printf("\nrexor: %x.%x.%x.%x  %x\n", (xor_mapped_address^magic_cookie)>>24, (xor_mapped_address^magic_cookie)<<8>>24, (xor_mapped_address^magic_cookie)<<16>>24, (xor_mapped_address^magic_cookie)<<24>>24, xor_mapped_port^uint16(magic_cookie>>16))
 
 	}
 }
