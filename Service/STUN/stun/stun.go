@@ -71,6 +71,25 @@ func isPayloadStun(p []byte) bool {
 		magic_cookie_bytes[2] == byte(magic_cookie>>8) && magic_cookie_bytes[3] == byte(magic_cookie))
 }
 
+// takes array of 2 bytes containing messageType inside stun header
+func GetMessageType(messageType []byte) (Method, MessageClass) {
+
+	mtype := uint16(messageType[0])<<8 | uint16(messageType[1])
+
+	a := (mtype >> 2) & 0b111110000000
+	b := (mtype >> 1) & 0b000001110000
+	c := mtype & 0xF
+
+	methodValue := a + b + c
+
+	c0 := (mtype >> 4) & 0x1
+	c1 := (mtype >> 7) & 0x2
+
+	class := c0 + c1
+
+	return Method(methodValue), MessageClass(class)
+}
+
 const stunSize int = 200
 const udpSize int = 1400
 
