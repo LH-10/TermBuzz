@@ -297,9 +297,15 @@ func (msg *messaging) read() {
 }
 
 func main() {
-	fmt.Println("Enter your name :")
-
 	var err error
+	configFilePath := flag.String("config", "./client.config", "path for the config file , it contains connections string  ")
+	flag.Parse()
+	fmt.Println("config file:", *configFilePath)
+	confg, err := ReadConfig(*configFilePath)
+	if err != nil {
+		fmt.Println("Error:", err, "Error while reading config , \nmake sure ", *configFilePath, "exists")
+		return
+	}
 	// var peerConn *webrtc.PeerConnection
 	// peerConn, err = createPeerConn()
 	// if err != nil {
@@ -308,13 +314,18 @@ func main() {
 
 	myConn := connector{}
 	var messageToServer models.ClientMessageFormatFut
-	fmt.Scan(&messageToServer.SenderName)
+	messageToServer.SenderName = confg.UserName
 	// msgr := messaging{}
 	myConn.signaling = messaging{ctx: context.Background()}
-	ipadd := flag.String("ip", "192.168.1.5", "ipaddress of server")
-	port := "8081"
-	flag.Parse()
-	address := fmt.Sprintf("ws://%s:%s", *ipadd, port)
+	// ipadd := flag.String("ip", "192.168.1.5", "ipaddress of server")
+	port := confg.SignalingServerPort
+	var address string
+	if port == 0 {
+
+		address = fmt.Sprintf("ws://%s", confg.SignalingServerURL)
+	} else {
+		address = fmt.Sprintf("ws://%s:%d", confg.SignalingServerURL, port)
+	}
 	myConn.signaling.conn, _, err = websocket.Dial(myConn.signaling.ctx, address, nil)
 	if err != nil {
 		log.Println(err)
