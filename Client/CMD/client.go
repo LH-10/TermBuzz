@@ -297,7 +297,7 @@ func (msg *messaging) read() {
 }
 
 func main() {
-	ReadConfig()
+	ReadConfig("./client.config")
 	fmt.Println("Enter your name :")
 
 	var err error

@@ -9,24 +9,26 @@ import (
 type ClientConfig struct {
 	UserName            string
 	SignalingServerURL  string
-	SignalingServerPort string
+	SignalingServerPort uint
 	STUNServer          string
 }
 
-func ReadConfig() {
-	file, err := os.Open("./client.config")
+func ReadConfig(configFilePath string) (ClientConfig, error) {
+	file, err := os.Open(configFilePath)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return ClientConfig{}, err
 	}
+	defer file.Close()
 	decoder := json.NewDecoder(file)
 	config := ClientConfig{}
 	err = decoder.Decode(&config)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return ClientConfig{}, err
 	}
 	fmt.Println(config)
+	return config, nil
 }
 
 func SetConfig(key string, value any) {
