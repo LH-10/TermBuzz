@@ -112,7 +112,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		panic(err)
 	}
 	var config webrtc.Configuration
-	config.ICEServers = []webrtc.ICEServer{{URLs: []string{"stun:stun1.l.google.com:19302"}}}
+	config.ICEServers = []webrtc.ICEServer{{URLs: clientConfig.STUNServers}}
 
 	peerConn, err := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i)).NewPeerConnection(config)
 	if err != nil {
@@ -296,12 +296,14 @@ func (msg *messaging) read() {
 
 }
 
+var clientConfig ClientConfig
+
 func main() {
 	var err error
 	configFilePath := flag.String("config", "./client.config", "path for the config file , it contains connections string  ")
 	flag.Parse()
 	fmt.Println("config file:", *configFilePath)
-	confg, err := ReadConfig(*configFilePath)
+	clientConfig, err = ReadConfig(*configFilePath)
 	if err != nil {
 		fmt.Println("Error:", err, "Error while reading config , \nmake sure ", *configFilePath, "exists")
 		return
@@ -314,17 +316,17 @@ func main() {
 
 	myConn := connector{}
 	var messageToServer models.ClientMessageFormatFut
-	messageToServer.SenderName = confg.UserName
+	messageToServer.SenderName = clientConfig.UserName
 	// msgr := messaging{}
 	myConn.signaling = messaging{ctx: context.Background()}
 	// ipadd := flag.String("ip", "192.168.1.5", "ipaddress of server")
-	port := confg.SignalingServerPort
+	port := clientConfig.SignalingServerPort
 	var address string
 	if port == 0 {
 
-		address = fmt.Sprintf("ws://%s", confg.SignalingServerURL)
+		address = fmt.Sprintf("ws://%s", clientConfig.SignalingServerURL)
 	} else {
-		address = fmt.Sprintf("ws://%s:%d", confg.SignalingServerURL, port)
+		address = fmt.Sprintf("ws://%s:%d", clientConfig.SignalingServerURL, port)
 	}
 	myConn.signaling.conn, _, err = websocket.Dial(myConn.signaling.ctx, address, nil)
 	if err != nil {

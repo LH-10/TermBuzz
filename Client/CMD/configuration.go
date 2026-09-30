@@ -10,7 +10,7 @@ type ClientConfig struct {
 	UserName            string
 	SignalingServerURL  string
 	SignalingServerPort uint
-	STUNServer          string
+	STUNServers         []string
 }
 
 func ReadConfig(configFilePath string) (ClientConfig, error) {
