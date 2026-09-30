@@ -17,7 +17,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	_ "encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,36 +35,6 @@ import (
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	"github.com/pion/webrtc/v4"
 )
-
-// func chatWithClient(ctx context.Context, conn *websocket.Conn, messageStructure models.ClientMessageFormat) {
-// 	inps := bufio.NewScanner(os.Stdin)
-// 	inps.Scan()
-// 	fmt.Println("You are now connected with other client")
-// 	messageStructure.MessageType = constants.PeerChat
-// 	PeerMessage := new(models.ClientMessageFormat)
-
-// 	go func() {
-// 		for {
-// 			wsjson.Read(ctx, conn, PeerMessage)
-// 			if PeerMessage.Message == "exit" {
-// 				fmt.Println("exiting chat")
-// 				break
-// 			}
-// 			fmt.Println(PeerMessage.ClientName, ": ", PeerMessage.Message)
-// 		}
-// 	}()
-// 	for inps.Scan() {
-
-// 		messageStructure.Message = inps.Text()
-// 		if messageStructure.Message == "exit" {
-// 			wsjson.Write(ctx, conn, messageStructure)
-// 			fmt.Println("Ending chat")
-// 			break
-// 		}
-// 		wsjson.Write(ctx, conn, messageStructure)
-
-// 	}
-// }
 
 type connector struct {
 	peerConn  *webrtc.PeerConnection

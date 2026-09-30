@@ -20,7 +20,6 @@ func streamReader(t *webrtc.TrackRemote) {
 	default:
 		fmt.Print("invalid codec")
 	}
-
 	sb := samplebuilder.New(90, depacktizer, t.Codec().ClockRate)
 	opusdecoder, err := opuslib.NewDecoderWithOutput(48000, 2)
 	if err != nil {
@@ -40,13 +39,8 @@ func streamReader(t *webrtc.TrackRemote) {
 	}
 	<-ready
 	otoply := otoCtx.NewPlayer(rdr)
-	thirdRead := 0
-	// gotSample := make(chan struct{})
 	go func() {
 		for {
-			if thirdRead%3 == 0 {
-				// fmt.Println("reading.....")
-			}
 
 			packet, _, err := t.ReadRTP()
 			if err != nil {
@@ -59,22 +53,14 @@ func streamReader(t *webrtc.TrackRemote) {
 			for sample := sb.Pop(); sample != nil; sample = sb.Pop() {
 				_, err := rdr.Write(sample.Data)
 
-				if thirdRead%3 == 0 {
-					// fmt.Println("extract sample on 3rd")
-					// fmt.Println("wrote n:", n)
-				}
 				if err != nil {
 					fmt.Println(err)
 				}
-				// go func(){gotSample <- struct{}{}
 			}
-
-			thirdRead++
 
 		}
 	}()
 	for {
-		// <-gotSample
 		if !otoply.IsPlaying() {
 
 			if rdr.HasData() {

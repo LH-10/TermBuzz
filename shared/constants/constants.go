@@ -3,7 +3,7 @@ package constants
 const (
 	RequestID = 9800 + iota
 	RequestPeerConnection
-	RequestPeerList
+	RequestPeerList //ask for list of clients connected to the signaling server
 	PeerChat
 	Blank
 	SDPExchange
