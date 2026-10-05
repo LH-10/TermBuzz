@@ -50,14 +50,14 @@ func ClientToClient(sender *websocket.Conn, recievername string, ctx context.Con
 		fmt.Println(sendername, " has wrong connection id ")
 		return
 	}
-	var serverMsg models.ServerMessage
+	var serverMsg models.ClientMessageFormatFut
 	var recieverConnection *websocket.Conn
 	recieverConnection = clients[recievername].conn
 	fmt.Println("Sender", sendername, "\n reciever conn", recieverConnection)
 	message = sendername + ":" + message
-	serverMsg.Message = message
+	serverMsg.Payload.Message = message
 	serverMsg.MessageType = constants.PeerChat
-
+	fmt.Println("\nMsg:", serverMsg)
 	wsjson.Write(ctx, recieverConnection, serverMsg)
 }
 
@@ -128,7 +128,8 @@ func main() {
 			log.Printf("recieved: %v", clientMessage)
 
 			switch clientMessage.MessageType {
-
+			case constants.Blank:
+				fmt.Print("Blank Req")
 			case constants.RequestPeerList:
 				var clientInfoString strings.Builder
 				for i := range clients {
@@ -139,8 +140,9 @@ func main() {
 					*webrtc.SessionDescription
 					*webrtc.ICECandidateInit
 				}{Message: clientInfoString.String()}})
-			case constants.RequestPeerConnection:
+			case constants.PeerChat:
 				recieverName := clientMessage.RecieverName
+				fmt.Print("Chatting:", clientMessage.SenderName, ":->", clientMessage.Payload.Message)
 				ClientToClient(c, recieverName, ctx, clientMessage.SenderName, clientMessage.Payload.Message)
 			case constants.SDPExchange, constants.SDPAnswer:
 				if clientMessage.RecieverName == "" {
