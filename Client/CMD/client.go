@@ -349,7 +349,6 @@ func main() {
 
 	messageToServer.MessageType = constants.Blank
 	inps := bufio.NewScanner(os.Stdin)
-	err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &v)
 	// menu := v.Message
 	var message_receiver models.ClientMessageFormatFut
 	go func() {

@@ -64,7 +64,7 @@ func ClientToClient(sender *websocket.Conn, recievername string, ctx context.Con
 var numclient int
 
 func main() {
-	var MenuForClient [4]string = [4]string{"1.Get Client List\n", "2.Connect to client , 3.SDP exchange"}
+	// var MenuForClient [4]string = [4]string{"1.Get Client List\n", "2.Connect to client , 3.SDP exchange"}
 	// fmt.Print(MenuForClient)
 	wsMux := http.NewServeMux()
 	wsMux.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
@@ -110,11 +110,6 @@ func main() {
 		fmt.Printf("connections ")
 		for i := range clients {
 			fmt.Println(clients[i])
-		}
-
-		err = wsjson.Write(ctx, c, models.ServerMessage{Message: fmt.Sprintf("%v", MenuForClient)})
-		if err != nil {
-			log.Println(err)
 		}
 
 		for {
