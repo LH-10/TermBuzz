@@ -10,7 +10,7 @@ func TestReader(t *testing.T) {
 	cfg := ClientConfig{
 		SignalingServerURL:  "ws://signalUrl",
 		SignalingServerPort: 8099,
-		STUNServer:          "stunURL",
+		STUNServers:         []string{"stunURL"},
 		UserName:            "user123",
 	}
 	file, err := os.Create("./client_test_config")
@@ -24,8 +24,24 @@ func TestReader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
-	if readConf != cfg {
+	if readConf.SignalingServerPort != cfg.SignalingServerPort {
 		t.Fatalf("Invalid read %v", readConf)
+	}
+	if readConf.UserName != cfg.UserName {
+		t.Fatalf("Invalid read %v", readConf)
+	}
+	if readConf.SignalingServerURL != cfg.SignalingServerURL {
+		t.Fatalf("Invalid read %v", readConf)
+	}
+	if len(readConf.STUNServers) != len(cfg.STUNServers) {
+		t.Fatalf("Invalid read %v", readConf)
+	}
+
+	for i := range readConf.STUNServers {
+		if readConf.STUNServers[i] != cfg.STUNServers[i] {
+			t.Fatalf("Invalid read %v", readConf)
+
+		}
 	}
 
 }

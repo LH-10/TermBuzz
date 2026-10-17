@@ -17,7 +17,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	_ "encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,36 +35,6 @@ import (
 	_ "github.com/pion/mediadevices/pkg/driver/microphone"
 	"github.com/pion/webrtc/v4"
 )
-
-// func chatWithClient(ctx context.Context, conn *websocket.Conn, messageStructure models.ClientMessageFormat) {
-// 	inps := bufio.NewScanner(os.Stdin)
-// 	inps.Scan()
-// 	fmt.Println("You are now connected with other client")
-// 	messageStructure.MessageType = constants.PeerChat
-// 	PeerMessage := new(models.ClientMessageFormat)
-
-// 	go func() {
-// 		for {
-// 			wsjson.Read(ctx, conn, PeerMessage)
-// 			if PeerMessage.Message == "exit" {
-// 				fmt.Println("exiting chat")
-// 				break
-// 			}
-// 			fmt.Println(PeerMessage.ClientName, ": ", PeerMessage.Message)
-// 		}
-// 	}()
-// 	for inps.Scan() {
-
-// 		messageStructure.Message = inps.Text()
-// 		if messageStructure.Message == "exit" {
-// 			wsjson.Write(ctx, conn, messageStructure)
-// 			fmt.Println("Ending chat")
-// 			break
-// 		}
-// 		wsjson.Write(ctx, conn, messageStructure)
-
-// 	}
-// }
 
 type connector struct {
 	peerConn  *webrtc.PeerConnection
@@ -112,7 +81,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		panic(err)
 	}
 	var config webrtc.Configuration
-	config.ICEServers = []webrtc.ICEServer{{URLs: []string{"stun:stun1.l.google.com:19302"}}}
+	config.ICEServers = []webrtc.ICEServer{{URLs: clientConfig.STUNServers}}
 
 	peerConn, err := webrtc.NewAPI(webrtc.WithMediaEngine(m), webrtc.WithInterceptorRegistry(i)).NewPeerConnection(config)
 	if err != nil {
@@ -139,20 +108,21 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 
 func handleMessage(myConn *connector, messageToServer *models.ClientMessageFormatFut, inps *bufio.Scanner) {
 	switch messageToServer.Payload.Message {
-	case "1":
+	case "help":
+		fmt.Printf("command:\n\t%s\n\t%s\n\t%s\n", "list", "msg", "connect")
+		messageToServer.Payload.Message = ""
+	case "list":
 		messageToServer.MessageType = constants.RequestPeerList
-	case "2":
-		messageToServer.MessageType = constants.RequestPeerConnection
+	case "msg":
+		messageToServer.MessageType = constants.PeerChat
 		clientName := ""
-		fmt.Println("Enter Client name to connect with")
 		inps.Scan()
 		clientName = inps.Text()
 		messageToServer.RecieverName = clientName
 		fmt.Print("Enter Message:")
 		inps.Scan()
 		messageToServer.Payload.Message = inps.Text()
-	case "3":
-		fmt.Println("Enter reciver name:")
+	case "connect":
 		inps.Scan()
 		recvr := inps.Text()
 		fmt.Println("making call")
@@ -296,12 +266,14 @@ func (msg *messaging) read() {
 
 }
 
+var clientConfig ClientConfig
+
 func main() {
 	var err error
 	configFilePath := flag.String("config", "./client.config", "path for the config file , it contains connections string  ")
 	flag.Parse()
 	fmt.Println("config file:", *configFilePath)
-	confg, err := ReadConfig(*configFilePath)
+	clientConfig, err = ReadConfig(*configFilePath)
 	if err != nil {
 		fmt.Println("Error:", err, "Error while reading config , \nmake sure ", *configFilePath, "exists")
 		return
@@ -314,17 +286,17 @@ func main() {
 
 	myConn := connector{}
 	var messageToServer models.ClientMessageFormatFut
-	messageToServer.SenderName = confg.UserName
+	messageToServer.SenderName = clientConfig.UserName
 	// msgr := messaging{}
 	myConn.signaling = messaging{ctx: context.Background()}
 	// ipadd := flag.String("ip", "192.168.1.5", "ipaddress of server")
-	port := confg.SignalingServerPort
+	port := clientConfig.SignalingServerPort
 	var address string
 	if port == 0 {
 
-		address = fmt.Sprintf("ws://%s", confg.SignalingServerURL)
+		address = fmt.Sprintf("ws://%s", clientConfig.SignalingServerURL)
 	} else {
-		address = fmt.Sprintf("ws://%s:%d", confg.SignalingServerURL, port)
+		address = fmt.Sprintf("ws://%s:%d", clientConfig.SignalingServerURL, port)
 	}
 	myConn.signaling.conn, _, err = websocket.Dial(myConn.signaling.ctx, address, nil)
 	if err != nil {
@@ -377,8 +349,7 @@ func main() {
 
 	messageToServer.MessageType = constants.Blank
 	inps := bufio.NewScanner(os.Stdin)
-	err = wsjson.Read(myConn.signaling.ctx, myConn.GetWebSocketConn(), &v)
-	menu := v.Message
+	// menu := v.Message
 	var message_receiver models.ClientMessageFormatFut
 	go func() {
 		for {
@@ -415,6 +386,9 @@ func main() {
 					continue
 				}
 				fmt.Println("Got an answer", *myConn.peerConn.CurrentRemoteDescription() == *message_receiver.Payload.SessionDescription)
+			case constants.PeerChat:
+				fmt.Println("PeerChat")
+				fmt.Println(message_receiver)
 			case constants.Candidate:
 				fmt.Print("in ice candidates")
 				if message_receiver.Payload.ICECandidateInit == nil {
@@ -430,7 +404,8 @@ func main() {
 			}
 		}
 	}()
-
+	inps.Split(bufio.ScanWords)
+	fmt.Printf("TermBuzz> ")
 	for inps.Scan() {
 		messageToServer.Payload.Message = inps.Text()
 
@@ -444,7 +419,7 @@ func main() {
 		if messageToServer.Payload.Message != "" {
 			err = wsjson.Write(myConn.signaling.ctx, myConn.GetWebSocketConn(), messageToServer)
 			messageToServer.Payload.Message = ""
-
+			messageToServer.MessageType = constants.Blank
 		}
 
 		// log.Println(v)
@@ -457,7 +432,7 @@ func main() {
 			}
 		}
 
-		fmt.Println(menu)
+		fmt.Printf("TermBuzz> ")
 	}
 
 	myConn.GetWebSocketConn().Close(websocket.StatusNormalClosure, "closed")
