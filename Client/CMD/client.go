@@ -96,7 +96,21 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 
 		peerConn.AddTrack((track))
 	}
-	peerConn.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) { fmt.Print("webrtc Connection", pcs, "\n") })
+	peerConn.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
+		if peerConn.ConnectionState() == webrtc.PeerConnectionStateDisconnected {
+			for _, sender := range peerConn.GetSenders() {
+				peerConn.RemoveTrack(sender)
+			}
+			err := peerConn.Close()
+			if err != nil {
+				fmt.Println("Error: ", err)
+				return
+			}
+			fmt.Println("Cleanup")
+		}
+
+		fmt.Print("webrtc Connection", pcs, "\n")
+	})
 	peerConn.OnICEConnectionStateChange(func(is webrtc.ICEConnectionState) { fmt.Print("IceConnection State:", is.String()) })
 	peerConn.OnICEGatheringStateChange(func(is webrtc.ICEGatheringState) {
 		fmt.Print("Ice Gethering state:", is, "\n\n")
