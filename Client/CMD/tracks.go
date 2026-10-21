@@ -20,6 +20,9 @@ type AudioController struct {
 	ready  chan struct{}
 }
 
+func (ac *AudioController) StopAudio() error {
+	return ac.ctx.Suspend()
+}
 func (ac *AudioController) AssignReader(r io.Reader) {
 	<-ac.ready
 	ac.Player = ac.ctx.NewPlayer(r)
@@ -66,12 +69,15 @@ func streamReader(t *webrtc.TrackRemote, audio_c *AudioController) {
 		return
 	}
 	audio_c.AssignReader(rdr)
+	rtp_read_stop := make(chan error)
 	go func() {
 		for {
+			t.SetReadDeadline(time.Now().Add(10 * time.Second))
 
 			packet, _, err := t.ReadRTP()
 			if err != nil {
 				log.Println(err)
+				rtp_read_stop <- err
 				return
 			}
 
@@ -99,7 +105,9 @@ func streamReader(t *webrtc.TrackRemote, audio_c *AudioController) {
 	fmt.Println("playing now")
 	fmt.Println("IS null:", audio_c.IsPlayerNil())
 	for {
-		time.Sleep(2 * time.Minute)
+		fmt.Println("rtp error", <-rtp_read_stop)
+
+		break
 	}
 }
 
@@ -112,8 +120,10 @@ func handle_tracks(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 	go func() {
 		audio_c := &AudioController{}
 		streamReader(t, audio_c)
-		audio_c.Player.Play()
+		err := audio_c.StopAudio()
+		if err != nil {
+			fmt.Println("Error while trying to suspend audio", err)
+		}
 
-		select {}
 	}()
 }
