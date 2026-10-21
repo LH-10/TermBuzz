@@ -13,6 +13,7 @@ type opusCodecReader struct {
 	buffer      [10][]byte
 	indx        int
 	readindx    int
+	stopReading bool
 }
 
 func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
@@ -40,6 +41,9 @@ func (ocr *opusCodecReader) HasData() bool {
 func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 	// n = copy(p, ocr.buf)
 	for ocr.readindx == ocr.indx {
+		if ocr.stopReading {
+			return 0, fmt.Errorf("Reading Stopped")
+		}
 	}
 	n = copy(p, ocr.buffer[ocr.readindx])
 	// fmt.Println("Read called with", n)

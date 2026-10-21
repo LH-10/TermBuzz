@@ -106,7 +106,10 @@ func streamReader(t *webrtc.TrackRemote, audio_c *AudioController) {
 	fmt.Println("IS null:", audio_c.IsPlayerNil())
 	for {
 		fmt.Println("rtp error", <-rtp_read_stop)
-
+		rdr.stopReading = true
+		audio_c.Player.Pause()
+		audio_c.Player = nil
+		rdr = nil
 		break
 	}
 }
