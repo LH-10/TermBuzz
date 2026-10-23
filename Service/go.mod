@@ -1,4 +1,4 @@
-module github.com/LH-10/TermBuzz
+module github.com/LH-10/TermBuzz/Service
 
 go 1.25.1
 

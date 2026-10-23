@@ -14,7 +14,7 @@
 package main
 
 import (
-	"github.com/LH-10/TermBuzz/STUN/stun"
+	"github.com/LH-10/TermBuzz/Service/STUN/stun"
 )
 
 func main() {
