@@ -16,8 +16,6 @@ package stun
 import (
 	"fmt"
 	"net"
-
-	"github.com/pion/stun/v3"
 	// "net/netip"
 )
 
@@ -49,8 +47,10 @@ const (
 //    |11|10|9|8|7|1|6|5|4|0|3|2|1|0|
 //    +--+--+-+-+-+-+-+-+-+-+-+-+-+-+
 //   "From RFC 8489 section-5 Fig 3"
+// https://www.rfc-editor.org/info/rfc8489/
 
-func makeMessageType(method Method, mclass MessageClass) uint16 {
+// refer https://github.com/pion/stun/tree/main/message.go
+func MakeMessageType(method Method, mclass MessageClass) uint16 {
 	mthd := uint16(method)
 	m7_to_m11 := mthd & 0xf80 //   0b111110000000
 	m4_to_m6 := mthd & 0x70   //   0b000001110000
@@ -69,7 +69,7 @@ func makeMessageType(method Method, mclass MessageClass) uint16 {
 	return mthd + class
 }
 
-func encodeMessageType(mtype uint16) [2]byte {
+func EncodeMessageType(mtype uint16) [2]byte {
 	return [2]byte{byte(mtype >> 8), byte(mtype << 8 >> 8)}
 }
 
@@ -134,10 +134,7 @@ func Process(conn *net.UDPConn) error {
 		ipv4addr |= (uint32(bin_ipv4[2]) << 16)
 		ipv4addr |= (uint32(bin_ipv4[1]) << 8)
 		ipv4addr |= uint32(bin_ipv4[0])
-		if err != nil {
-			fmt.Println(err)
-			return err
-		}
+
 		data := pb[:]
 		messagetype := data[:2]
 		// messagetype[0]=messagetype[0]<<2;
@@ -174,12 +171,7 @@ func Process(conn *net.UDPConn) error {
 
 		fmt.Printf("Message type %x \n Message length %x\n  magic_cookie %x\n transactionID:%x%x", messagetypefull, messagelength, magic_cookie, transactionID1, transactionID2)
 		fmt.Println("\naddr:", addr.String())
-		msg := stun.New()
-		err = stun.Decode(pb, msg)
-		if err != nil {
-			fmt.Println(err)
-			return err
-		}
+
 		xor_map_attr_type := [2]byte{0, 0x20}
 		xor_ipv4_attribute_length := [2]byte{0x0, 0x8}
 		// xor_ipv6_attribute_length := [2]byte{0x0, 0x14}
@@ -203,7 +195,7 @@ func Process(conn *net.UDPConn) error {
 		// tp:=stun.NewType(stun.MethodBinding,stun.BindingSuccess.Class)
 		// m2:=stun.NewWithOptions(stun.WithStrict())
 
-		type_binding_response := encodeMessageType(makeMessageType(MethodBinding, SuccessRespone))
+		type_binding_response := EncodeMessageType(MakeMessageType(MethodBinding, SuccessRespone))
 		reply_bytes := []byte{type_binding_response[0], type_binding_response[1], byte(0), 0x0c, mcb[0], mcb[1], mcb[2], mcb[3]}
 		reply_bytes = append(reply_bytes, trcb...)
 		reply_bytes = append(reply_bytes, xor_map_attr_type[:]...)
@@ -212,17 +204,13 @@ func Process(conn *net.UDPConn) error {
 		reply_bytes = append(reply_bytes, ipv4_family)
 		reply_bytes = append(reply_bytes, byte(xor_mapped_port<<8>>8), byte(xor_mapped_port>>8))
 		reply_bytes = append(reply_bytes, byte(xor_mapped_address<<24>>24), byte(xor_mapped_address<<16>>24), byte(xor_mapped_address<<8>>24), byte(xor_mapped_address>>24))
-		fmt.Println("stun?????", stun.IsMessage(reply_bytes))
+		fmt.Println("stun?????", isPayloadStun(reply_bytes))
 		fmt.Printf("\n\nxor: %x %x\n", xor_mapped_address, xor_mapped_port)
-		var send = stun.New()
-		xmap := stun.XORMappedAddress{IP: net.ParseIP(addr.Addr().String())}
-		xmap.AddTo(send)
-		fmt.Printf("send %v", send.Attributes)
+
 		_, err = conn.WriteToUDPAddrPort(reply_bytes, addr)
 		if err != nil {
 			fmt.Println(err)
 		}
-		fmt.Printf("message %v \n transaction %x", msg, msg.TransactionID)
 
 	}
 }

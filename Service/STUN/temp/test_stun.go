@@ -45,7 +45,7 @@ func main() {
 					continue
 				}
 				fmt.Println("Stn:", msg)
-				fmt.Println(addr.String(), "\n")
+				fmt.Println(addr.String())
 				// fmt.Printf("%x", p)
 				fmt.Println("Stn:", msg.Attributes[0])
 				continue
