@@ -151,7 +151,6 @@ func Process(conn *net.UDPConn) error {
 
 		messagetypefull |= uint16(messagetype[1])
 		messagelength := data[2:4]
-		var magic_cookie uint32
 
 		mcb := data[4:8]
 
@@ -203,11 +202,7 @@ func Process(conn *net.UDPConn) error {
 
 		// tp:=stun.NewType(stun.MethodBinding,stun.BindingSuccess.Class)
 		// m2:=stun.NewWithOptions(stun.WithStrict())
-		// (tp)
-		// func xormapping(){
 
-		// }
-		//
 		type_binding_response := encodeMessageType(makeMessageType(MethodBinding, SuccessRespone))
 		reply_bytes := []byte{type_binding_response[0], type_binding_response[1], byte(0), 0x0c, mcb[0], mcb[1], mcb[2], mcb[3]}
 		reply_bytes = append(reply_bytes, trcb...)
