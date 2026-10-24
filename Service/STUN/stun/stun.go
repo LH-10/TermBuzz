@@ -130,10 +130,10 @@ func Process(conn *net.UDPConn) error {
 		bin_ipv4 := addr.Addr().As4()
 		fmt.Printf("bin %x\n", bin_ipv4)
 		var ipv4addr uint32
-		ipv4addr = uint32(bin_ipv4[3]) << 24
-		ipv4addr |= (uint32(bin_ipv4[2]) << 16)
-		ipv4addr |= (uint32(bin_ipv4[1]) << 8)
-		ipv4addr |= uint32(bin_ipv4[0])
+		ipv4addr = uint32(bin_ipv4[0]) << 24
+		ipv4addr |= (uint32(bin_ipv4[1]) << 16)
+		ipv4addr |= (uint32(bin_ipv4[2]) << 8)
+		ipv4addr |= uint32(bin_ipv4[3])
 
 		data := pb[:]
 		messagetype := data[:2]
@@ -202,8 +202,8 @@ func Process(conn *net.UDPConn) error {
 		reply_bytes = append(reply_bytes, xor_ipv4_attribute_length[:]...)
 		reply_bytes = append(reply_bytes, reserved)
 		reply_bytes = append(reply_bytes, ipv4_family)
-		reply_bytes = append(reply_bytes, byte(xor_mapped_port<<8>>8), byte(xor_mapped_port>>8))
-		reply_bytes = append(reply_bytes, byte(xor_mapped_address<<24>>24), byte(xor_mapped_address<<16>>24), byte(xor_mapped_address<<8>>24), byte(xor_mapped_address>>24))
+		reply_bytes = append(reply_bytes, byte(xor_mapped_port>>8), byte(xor_mapped_port))
+		reply_bytes = append(reply_bytes, byte(xor_mapped_address>>24), byte(xor_mapped_address>>16), byte(xor_mapped_address>>8), byte(xor_mapped_address))
 		fmt.Println("stun?????", isPayloadStun(reply_bytes))
 		fmt.Printf("\n\nxor: %x %x\n", xor_mapped_address, xor_mapped_port)
 

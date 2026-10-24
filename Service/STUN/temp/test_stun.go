@@ -47,6 +47,9 @@ func main() {
 				fmt.Println("Stn:", msg)
 				fmt.Println(addr.String())
 				// fmt.Printf("%x", p)
+				var xmap stun.XORMappedAddress
+				xmap.GetFrom(msg)
+				fmt.Println("xmap: ", xmap)
 				fmt.Println("Stn:", msg.Attributes[0])
 				continue
 			}
