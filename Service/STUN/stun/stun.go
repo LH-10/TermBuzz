@@ -144,7 +144,7 @@ func Process(conn *net.UDPConn) error {
 			fmt.Printf("%x", messagetype[i])
 		}
 		fmt.Println("\n---")
-		messagetypefull = uint16(messagetype[0] << 10)
+		messagetypefull = uint16(messagetype[0]) << 8
 
 		messagetypefull |= uint16(messagetype[1])
 		messagelength := data[2:4]
