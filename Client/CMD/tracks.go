@@ -14,6 +14,8 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media/samplebuilder"
 )
 
+var oto_ctx *oto.Context = nil
+
 type AudioController struct {
 	ctx    *oto.Context
 	Player *oto.Player
@@ -24,7 +26,6 @@ func (ac *AudioController) StopAudio() error {
 	return ac.ctx.Suspend()
 }
 func (ac *AudioController) AssignReader(r io.Reader) {
-	<-ac.ready
 	ac.Player = ac.ctx.NewPlayer(r)
 }
 
@@ -33,16 +34,26 @@ func (ac *AudioController) IsPlayerNil() bool {
 }
 
 func (ac *AudioController) Initialize() error {
+	if oto_ctx != nil {
+		ac.ctx = oto_ctx
+		ac.ctx.Resume()
+		return ac.ctx.Err()
+	}
 	options := oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2}
 	var err error
-	ac.ctx, ac.ready, err = oto.NewContext(&options)
+	oto_ctx, ac.ready, err = oto.NewContext(&options)
 	if err != nil {
 		fmt.Println("Error", err)
 		return err
 	}
+	ac.ctx = oto_ctx
+	<-ac.ready
+	if err := ac.ctx.Err(); err != nil {
+		return err
+	}
 	return nil
 }
-func streamReader(t *webrtc.TrackRemote, audio_c *AudioController) {
+func streamReader(t *webrtc.TrackRemote) {
 	var depacktizer rtp.Depacketizer
 	switch t.Codec().MimeType {
 	case webrtc.MimeTypeOpus:
@@ -50,6 +61,7 @@ func streamReader(t *webrtc.TrackRemote, audio_c *AudioController) {
 	default:
 		fmt.Print("invalid codec")
 	}
+	audio_c := AudioController{}
 	sb := samplebuilder.New(90, depacktizer, t.Codec().ClockRate)
 	opusdecoder, err := opuslib.NewDecoderWithOutput(48000, 2)
 	if err != nil {
@@ -112,6 +124,10 @@ func streamReader(t *webrtc.TrackRemote, audio_c *AudioController) {
 		rdr = nil
 		break
 	}
+	err = audio_c.StopAudio()
+	if err != nil {
+		fmt.Println("Error while trying to suspend audio", err)
+	}
 }
 
 func handle_tracks(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
@@ -121,12 +137,7 @@ func handle_tracks(t *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
 	fmt.Print("Paylaod tpe", t.PayloadType())
 
 	go func() {
-		audio_c := &AudioController{}
-		streamReader(t, audio_c)
-		err := audio_c.StopAudio()
-		if err != nil {
-			fmt.Println("Error while trying to suspend audio", err)
-		}
+		streamReader(t)
 
 	}()
 }
