@@ -37,6 +37,7 @@ import (
 )
 
 type connector struct {
+	setNil    chan struct{}
 	peerConn  *webrtc.PeerConnection
 	signaling messaging
 }
@@ -44,15 +45,19 @@ type connector struct {
 func (c *connector) GetWebSocketConn() *websocket.Conn {
 	return c.signaling.conn
 }
+func (c *connector) ReleasePeerConnection() {
+	<-c.setNil
+	c.peerConn = nil
+	fmt.Print("PeerConnection released")
+}
 
-func getAudio(codecSelector *mediadevices.CodecSelector) ([]mediadevices.Track, error) {
+func GetAudio(codecSelector *mediadevices.CodecSelector) ([]mediadevices.Track, error) {
 	stream, err := mediadevices.GetUserMedia(mediadevices.MediaStreamConstraints{
 		Audio: func(mtc *mediadevices.MediaTrackConstraints) {
 			// mtc.AudioConstraints=prop.AudioConstraints{}
 		},
 		Codec: codecSelector,
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +67,7 @@ func getAudio(codecSelector *mediadevices.CodecSelector) ([]mediadevices.Track, 
 }
 
 // creates peerconn with codecs and registers events  such as onTrack
-func createPeerConn() (*webrtc.PeerConnection, error) {
+func CreatePeerConn(release chan struct{}) (*webrtc.PeerConnection, error) {
 	m := &webrtc.MediaEngine{}
 	if err := m.RegisterDefaultCodecs(); err != nil {
 		panic(err)
@@ -88,7 +93,7 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		log.Println(err)
 		return nil, err
 	}
-	audioTrack, err := getAudio(codecSelector)
+	audioTrack, err := GetAudio(codecSelector)
 	if err != nil {
 		return nil, err
 	}
@@ -97,18 +102,26 @@ func createPeerConn() (*webrtc.PeerConnection, error) {
 		peerConn.AddTrack((track))
 	}
 	peerConn.OnConnectionStateChange(func(pcs webrtc.PeerConnectionState) {
+		if peerConn.ConnectionState() == webrtc.PeerConnectionStateClosed {
+			release <- struct{}{}
+			fmt.Println("Sents Message to release")
+		}
 		if peerConn.ConnectionState() == webrtc.PeerConnectionStateDisconnected {
 			for _, sender := range peerConn.GetSenders() {
 				peerConn.RemoveTrack(sender)
 			}
-			err := peerConn.Close()
+			err := audioTrack[0].Close() //release audio device
+			if err != nil {
+				fmt.Println("Error: ", err)
+				return
+			}
+			err = peerConn.Close()
 			if err != nil {
 				fmt.Println("Error: ", err)
 				return
 			}
 			fmt.Println("Cleanup")
 		}
-
 		fmt.Print("webrtc Connection", pcs, "\n")
 	})
 	peerConn.OnICEConnectionStateChange(func(is webrtc.ICEConnectionState) { fmt.Print("IceConnection State:", is.String()) })
@@ -140,7 +153,7 @@ func handleMessage(myConn *connector, messageToServer *models.ClientMessageForma
 		inps.Scan()
 		recvr := inps.Text()
 		fmt.Println("making call")
-		makeCall(myConn, recvr)
+		MakeCall(myConn, recvr)
 		fmt.Println("made call")
 	default:
 		fmt.Println("Invlaid choice")
@@ -150,15 +163,18 @@ func handleMessage(myConn *connector, messageToServer *models.ClientMessageForma
 }
 
 // initiate sdp exchange
-func makeCall(myConn *connector, reciever string) error {
+func MakeCall(myConn *connector, reciever string) error {
 	if myConn.peerConn == nil {
 		var err error
 		fmt.Println("here  make call ")
-		myConn.peerConn, err = createPeerConn()
+
+		myConn.setNil = make(chan struct{})
+		myConn.peerConn, err = CreatePeerConn(myConn.setNil)
 		if err != nil {
 			fmt.Println("error")
 			return err
 		}
+		go myConn.ReleasePeerConnection()
 	}
 	myConn.peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
@@ -208,16 +224,18 @@ func makeCall(myConn *connector, reciever string) error {
 }
 
 // read remote sdp and generate answer
-func incomingCall(reciever string, myConn *connector, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
+func IncomingCall(reciever string, myConn *connector, remoteSDP *webrtc.SessionDescription) (webrtc.SessionDescription, error) {
 	var err error
 	if myConn.peerConn == nil {
 		fmt.Println("here incoming")
-		myConn.peerConn, err = createPeerConn()
+		myConn.setNil = make(chan struct{})
+		myConn.peerConn, err = CreatePeerConn(myConn.setNil)
 		if err != nil {
 			fmt.Println("error")
 			fmt.Println("error while creating peerconn obj")
 			return webrtc.SessionDescription{}, err
 		}
+		go myConn.ReleasePeerConnection()
 	}
 	myConn.peerConn.OnICECandidate(func(i *webrtc.ICECandidate) {
 		if i == nil {
@@ -255,7 +273,7 @@ func incomingCall(reciever string, myConn *connector, remoteSDP *webrtc.SessionD
 	return ansSDP, nil
 }
 
-func readAnswer(peerConn *webrtc.PeerConnection, remoteSDP webrtc.SessionDescription) error {
+func ReadAnswer(peerConn *webrtc.PeerConnection, remoteSDP webrtc.SessionDescription) error {
 	err := peerConn.SetRemoteDescription(remoteSDP)
 	return err
 }
@@ -380,7 +398,7 @@ func main() {
 			switch message_receiver.MessageType {
 			case constants.SDPExchange: //someone sent sdp to connect
 				fmt.Println("SDP Exchange initiated")
-				ans, err := incomingCall(message_receiver.SenderName, &myConn, message_receiver.Payload.SessionDescription)
+				ans, err := IncomingCall(message_receiver.SenderName, &myConn, message_receiver.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
@@ -394,7 +412,7 @@ func main() {
 				fmt.Println("SDP answer sent")
 			case constants.SDPAnswer: // got sdp answer as response from peer
 				fmt.Println("Got an answer")
-				err := readAnswer(myConn.peerConn, *message_receiver.Payload.SessionDescription)
+				err := ReadAnswer(myConn.peerConn, *message_receiver.Payload.SessionDescription)
 				if err != nil {
 					fmt.Println(err)
 					continue
