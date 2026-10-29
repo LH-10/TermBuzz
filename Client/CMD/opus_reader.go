@@ -20,7 +20,7 @@ func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
-	var out []byte = make([]byte, 3890) //2*1920+50
+	var out []byte = make([]byte, 3850) //2*1920+50
 	_, _, err = ocr.opusDecoder.Decode(p, out)
 	// fmt.Println("band:", band, "\nstero?", isStr)
 	if err != nil {
