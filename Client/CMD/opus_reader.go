@@ -7,6 +7,8 @@ import (
 	opuslib "github.com/pion/opus"
 )
 
+const buffer_size = 0x10 //keep the buffer size value as something to the power of 2 like 8 ,16 ,32 this allows 'and' operation to reset the index in ring buffer to 0
+
 type audio_buffer struct {
 	buf []byte
 	mx  sync.Mutex
@@ -35,7 +37,7 @@ func (ab *audio_buffer) Read(p []byte) int {
 
 type opusCodecReader struct {
 	opusDecoder opuslib.Decoder
-	abf         [10]audio_buffer
+	abf         [buffer_size]audio_buffer
 	indx        int
 	readindx    int
 	stopReading bool
@@ -59,7 +61,7 @@ func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
 	}
 
 	ocr.abf[ocr.indx].Write(out)
-	ocr.indx = (ocr.indx + 1) % len(ocr.abf)
+	ocr.indx = (ocr.indx + 1) & (buffer_size - 1) //resets indx to 0 , similar to indx % buffer_size
 	return len(out), nil
 
 }
@@ -73,11 +75,11 @@ func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 			return 0, fmt.Errorf("Reading Stopped")
 		}
 		n = ocr.abf[ocr.readindx].LockedRead(p)
-		ocr.readindx = (ocr.readindx + 1) % len(ocr.abf)
+		ocr.readindx = (ocr.readindx + 1) & (buffer_size - 1)
 		return
 	}
 	n = ocr.abf[ocr.readindx].Read(p)
-	ocr.readindx = (ocr.readindx + 1) % len(ocr.abf)
+	ocr.readindx = (ocr.readindx + 1) & (buffer_size - 1) //resets indx to 0 , similar to indx % buffer_size
 	// if n == 0 {
 	// 	return n, io.EOF
 	// }
