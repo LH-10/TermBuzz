@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"sync"
 	"sync/atomic"
 
 	opuslib "github.com/pion/opus"
@@ -14,7 +13,6 @@ const buffer_size = 0x80
 
 type audio_buffer struct {
 	buf []byte
-	mx  sync.Mutex
 }
 
 func (ab *audio_buffer) Init() {
@@ -32,15 +30,15 @@ func (ab *audio_buffer) Read(p []byte) int {
 
 type opusCodecReader struct {
 	opusDecoder opuslib.Decoder
-	abf         [buffer_size]audio_buffer
+	audio_buff  [buffer_size]audio_buffer
 	write_index atomic.Uint32
 	read_index  atomic.Uint32
 	stopReading bool
 }
 
 func (ocr *opusCodecReader) Init() {
-	for i := range ocr.abf {
-		ocr.abf[i].Init()
+	for i := range ocr.audio_buff {
+		ocr.audio_buff[i].Init()
 	}
 }
 func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
@@ -63,7 +61,7 @@ func (ocr *opusCodecReader) Write(p []byte) (n int, err error) {
 	if next_wri == read_index {
 		return 0, fmt.Errorf("Buffer Full")
 	}
-	ocr.abf[write_index].Write(out)
+	ocr.audio_buff[write_index].Write(out)
 	ocr.write_index.Store(next_wri)
 	return len(out), nil
 
@@ -83,7 +81,7 @@ func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 		return 0, nil
 	}
 
-	n = ocr.abf[read_index].Read(p)
+	n = ocr.audio_buff[read_index].Read(p)
 	ocr.read_index.Store((read_index + 1) & (buffer_size - 1)) //resets indx to 0
 	return n, err
 
