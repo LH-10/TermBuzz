@@ -68,11 +68,9 @@ func streamReader(t *webrtc.TrackRemote) {
 		fmt.Println(err)
 		return
 	}
-	var dt [10][]byte
-	for i := range dt {
-		dt[i] = make([]byte, 3980)
-	}
-	rdr := &opusCodecReader{opusDecoder: opusdecoder, buf: make([]byte, 0), buffer: dt, indx: 0, readindx: 0}
+
+	rdr := &opusCodecReader{opusDecoder: opusdecoder}
+	go rdr.Init()
 	err = audio_c.Initialize()
 	// otoCtxOpts := &oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2}
 	// otoCtx, ready, err := oto.NewContext(otoCtxOpts)
