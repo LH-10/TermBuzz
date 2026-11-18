@@ -77,6 +77,9 @@ func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 	read_index := ocr.read_index.Load()
 
 	if read_index == write_index {
+		if ocr.stopReading {
+			return 0, fmt.Errorf("Reading Stopped")
+		}
 		return 0, nil
 	}
 
