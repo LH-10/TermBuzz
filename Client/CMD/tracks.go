@@ -39,7 +39,7 @@ func (ac *AudioController) Initialize() error {
 		ac.ctx.Resume()
 		return ac.ctx.Err()
 	}
-	options := oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2, BufferSize: 8}
+	options := oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2}
 	var err error
 	oto_ctx, ac.ready, err = oto.NewContext(&options)
 	if err != nil {
@@ -68,11 +68,8 @@ func streamReader(t *webrtc.TrackRemote) {
 		fmt.Println(err)
 		return
 	}
-	var dt [10][]byte
-	for i := range dt {
-		dt[i] = make([]byte, 3950)
-	}
-	rdr := &opusCodecReader{opusDecoder: opusdecoder, indx: 0, readindx: 0}
+
+	rdr := &opusCodecReader{opusDecoder: opusdecoder}
 	go rdr.Init()
 	err = audio_c.Initialize()
 	// otoCtxOpts := &oto.NewContextOptions{SampleRate: 48000, Format: oto.FormatSignedInt16LE, ChannelCount: 2}
