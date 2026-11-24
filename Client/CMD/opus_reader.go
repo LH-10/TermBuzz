@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	opuslib "github.com/pion/opus"
 )
@@ -78,10 +79,11 @@ func (ocr *opusCodecReader) Read(p []byte) (n int, err error) {
 		if ocr.stopReading {
 			return 0, fmt.Errorf("Reading Stopped")
 		}
+		time.Sleep(time.Nanosecond * 50)
 		return 0, nil
 	}
 
-	n = ocr.audio_buff[read_index].Read(p)
+	n = ocr.audio_buff[read_index].Read(p[:3840])
 	ocr.read_index.Store((read_index + 1) & (buffer_size - 1)) //resets indx to 0
 	return n, err
 
